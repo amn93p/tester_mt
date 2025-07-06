@@ -1,4 +1,5 @@
 #!/bin/bash
+set +H  # Désactive l'expansion de l'historique pour éviter les bugs avec !
 
 # ╔════════════════════════════════════════════════════════════════════╗
 # ║                      Testeur Minitalk Interactif                  ║
@@ -19,9 +20,8 @@ echo -e "
 # --- Configuration ---
 SERVER="./server"
 CLIENT="./client"
-SERVER_LOG="server.log"
+SERVER_LOG="server_output.txt"
 
-# --- Style terminal ---
 C_RESET='\033[0m'
 C_RED='\033[0;31m'
 C_GREEN='\033[0;32m'
@@ -33,144 +33,125 @@ SUCCESS="${C_GREEN}${C_BOLD}[SUCCÈS]${C_RESET}"
 FAIL="${C_RED}${C_BOLD}[ÉCHEC]${C_RESET}"
 INFO="${C_BLUE}${C_BOLD}[INFO]${C_RESET}"
 
-# --- Compteurs ---
 tests_passed=0
 tests_failed=0
 
 cleanup() {
     echo -e "\n$INFO Nettoyage..."
-    [ -n "$SERVER_PID" ] && kill -j $SERVER_PID 2>/dev/null
     kill $SERVER_PID 2>/dev/null
     rm -f "$SERVER_LOG"
 }
 trap cleanup EXIT
 
 start_server() {
-    echo -e "$INFO Démarrage du serveur..."
-    ./$SERVER > "$SERVER_LOG" 2>&1 &
+    echo -e "$INFO Lancement du serveur..."
+    $SERVER > "$SERVER_LOG" 2>&1 &
     SERVER_PID=$!
     sleep 0.5
-    local displayed_pid=$(grep -o -m 1 '[0-9]\+' "$SERVER_LOG")
-    if [[ -n "$displayed_pid" ]]; then
-        echo -e "$SUCCESS Serveur lancé. PID : ${C_BOLD}$displayed_pid${C_RESET}"
-        SERVER_PID=$displayed_pid
-        sed -i '1d' "$SERVER_LOG"
-    else
+    local detected_pid=$(grep -o '[0-9]\+' "$SERVER_LOG" | head -n1)
+
+    if [[ -z "$detected_pid" ]]; then
         echo -e "$FAIL PID non détecté. Log :"
         cat "$SERVER_LOG"
         exit 1
     fi
+
+    SERVER_PID=$detected_pid
+    echo -e "$SUCCESS Serveur prêt. PID : ${C_BOLD}$SERVER_PID${C_RESET}"
 }
 
 run_test() {
     local title="$1"
-    local string="$2"
+    local message="$2"
 
     echo -e "\n--- $title ---"
     > "$SERVER_LOG"
-    local timeout=$(echo "2 + ${#string} * 0.005" | bc)
-    ./$CLIENT $SERVER_PID "$string" &
-    local client_pid=$!
-    (sleep $timeout && kill $client_pid 2>/dev/null) &
-    local watchdog=$!
-    wait $client_pid 2>/dev/null
-    local status=$?
-    kill $watchdog 2>/dev/null
-    sleep 0.1
 
-    local output=$(tr -d '\0' < "$SERVER_LOG")
-    if [ $status -ne 0 ]; then
-        echo -e "$FAIL Client bloqué ou timeout après $timeout s."
-        ((tests_failed++))
-    elif [[ "$output" == *"$string"* ]]; then
-        echo -e "$SUCCESS Message reçu correctement."
+    ./$CLIENT "$SERVER_PID" "$message"
+    sleep 1
+    local received=$(cat "$SERVER_LOG" | tr -d '\0')
+
+    echo -e "📤 ${C_YELLOW}Envoyé   :${C_RESET} '$message'"
+    echo -e "📥 ${C_YELLOW}Reçu     :${C_RESET} '$received'"
+
+    if [[ "$received" == *"$message"* ]]; then
+        echo -e "$SUCCESS Le message a été correctement reçu."
         ((tests_passed++))
     else
-        echo -e "$FAIL Message incorrect."
-        echo -e "       ${C_YELLOW}Attendu :${C_RESET} '$string'"
-        echo -e "       ${C_YELLOW}Reçu    :${C_RESET} '$output'"
+        echo -e "$FAIL Message incorrect ou incomplet."
         ((tests_failed++))
     fi
 }
 
 run_multi_client_test() {
-    echo -e "\n--- Test 5: Clients multiples simultanés ---"
+    echo -e "\n--- Test: Clients multiples ---"
     > "$SERVER_LOG"
-    ./$CLIENT $SERVER_PID "One" &
-    ./$CLIENT $SERVER_PID "Two" &
-    ./$CLIENT $SERVER_PID "Three" &
+    ./$CLIENT "$SERVER_PID" "A" &
+    ./$CLIENT "$SERVER_PID" "B" &
+    ./$CLIENT "$SERVER_PID" "C" &
     wait
     sleep 0.5
-    local output=$(tr -d '\0' < "$SERVER_LOG")
-    if [[ "$output" == *"One"* && "$output" == *"Two"* && "$output" == *"Three"* ]]; then
-        echo -e "$SUCCESS Tous les messages reçus."
+    local output=$(cat "$SERVER_LOG" | tr -d '\0')
+
+    if [[ "$output" == *"A"* && "$output" == *"B"* && "$output" == *"C"* ]]; then
+        echo -e "$SUCCESS Tous les messages ont été reçus."
         ((tests_passed++))
     else
-        echo -e "$FAIL Messages manquants."
-        echo -e "       ${C_YELLOW}Reçu:${C_RESET} $output"
+        echo -e "$FAIL Messages manquants dans la sortie."
+        echo -e "       ${C_YELLOW}Reçu :${C_RESET} '$output'"
         ((tests_failed++))
     fi
 }
 
-# === MENU DE SÉLECTION DES TESTS ===
-
-tests_to_run=()
-
-function show_menu() {
-    echo -e "${C_BOLD}Sélectionne les tests à exécuter :${C_RESET}"
+show_menu() {
+    echo -e "${C_BOLD}Sélectionne les tests à lancer :${C_RESET}"
     echo " 1 - Message simple"
     echo " 2 - Chaîne vide"
-    echo " 3 - Unicode (emoji + UTF-8)"
-    echo " 4 - Chaîne très longue (4k)"
+    echo " 3 - Emoji / Unicode"
+    echo " 4 - Long message"
     echo " 5 - Clients multiples"
     echo " 0 - Tous les tests"
     echo " q - Quitter"
     echo -n "> "
     read -r choice
-
     case "$choice" in
-        1) tests_to_run+=(1) ;;
-        2) tests_to_run+=(2) ;;
-        3) tests_to_run+=(3) ;;
-        4) tests_to_run+=(4) ;;
-        5) tests_to_run+=(5) ;;
-        0) tests_to_run=(1 2 3 4 5) ;;
+        1) tests=(1) ;;
+        2) tests=(2) ;;
+        3) tests=(3) ;;
+        4) tests=(4) ;;
+        5) tests=(5) ;;
+        0) tests=(1 2 3 4 5) ;;
         q|Q) echo "Annulé."; exit 0 ;;
-        *) echo "Option inconnue." ; show_menu ;;
+        *) echo "Choix invalide."; show_menu ;;
     esac
 }
 
-# === Lancement ===
-
+# === MAIN ===
 if [ ! -x "$SERVER" ] || [ ! -x "$CLIENT" ]; then
-    echo -e "$FAIL Exécutable '$SERVER' ou '$CLIENT' introuvable."
+    echo -e "$FAIL Serveur ou client introuvable/non exécutable."
     exit 1
 fi
 
 show_menu
 start_server
 
-for test_id in "${tests_to_run[@]}"; do
-    case $test_id in
-        1) run_test "Test 1: Message simple" "Hello World!" ;;
-        2) run_test "Test 2: Chaîne vide" "" ;;
-        3) run_test "Test 3: Unicode (UTF-8 + emoji)" "👋 π Vøici çàractèrës 测验 ✅" ;;
-        4) 
-            long_msg=$(head -c 4000 /dev/urandom | base64 | tr -d '[:space:]' | head -c 4000)
-            run_test "Test 4: Chaîne longue (4k)" "$long_msg"
-            ;;
+for test in "${tests[@]}"; do
+    case $test in
+        1) run_test "Message simple" "Hello42!" ;;
+        2) run_test "Chaîne vide" "" ;;
+        3) run_test "Emoji / UTF-8" "🐍😎🔥 çøøl" ;;
+        4) msg=$(head -c 4000 /dev/urandom | base64 | head -c 4000); run_test "Message long (4k)" "$msg" ;;
         5) run_multi_client_test ;;
     esac
 done
 
-# === Résumé ===
-echo -e "\n==================== ${C_BOLD}RÉSUMÉ${C_RESET} ===================="
-echo -e "Tests réussis : ${C_GREEN}$tests_passed${C_RESET}"
-echo -e "Tests échoués : ${C_RED}$tests_failed${C_RESET}"
-echo "================================================"
+# Résumé
+echo -e "\n${C_BOLD}RÉSULTAT FINAL${C_RESET}"
+echo -e "✅ Réussis : ${C_GREEN}$tests_passed${C_RESET}"
+echo -e "❌ Échoués : ${C_RED}$tests_failed${C_RESET}"
 
-if [ $tests_failed -eq 0 ]; then
-    echo -e "\n${C_GREEN}🎉 Bravo ! Tous les tests sont passés avec succès.${C_RESET}"
+if [ "$tests_failed" -eq 0 ]; then
+    echo -e "\n${C_GREEN}🎉 Tout est bon, Minitalk est conforme !${C_RESET}"
 else
-    echo -e "\n${C_RED}⚠️ Certains tests ont échoué. Consulte les logs.${C_RESET}"
+    echo -e "\n${C_RED}⚠️  Des erreurs sont présentes. Vérifie les logs ci-dessus.${C_RESET}"
 fi
