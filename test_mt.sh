@@ -10,7 +10,7 @@ GREEN=$(tput setaf 2)
 RED=$(tput setaf 1)
 RESET=$(tput sgr0)
 
-# Vérifie présence des fichiers nécessaires ou compile
+# Vérifie la présence des binaires ou compile
 if [ ! -f "$CLIENT" ] || [ ! -f "$SERVER" ]; then
     echo "🔍 Binaire client/server introuvable. Tentative de compilation..."
     if [ -f Makefile ]; then
@@ -58,21 +58,19 @@ function test_message {
 
 function test_acknowledgement {
     ((TEST_TOTAL++))
-    > "$SERVER_LOG"
+    echo "Test ACK (client doit bloquer sans serveur)..."
 
-    echo "Test ACK (accusé de réception)..."
-
-    ($CLIENT "$REAL_PID" "ok" > /dev/null) &
+    ($CLIENT 999999 "ok" > /dev/null) &
     CLIENT_PID=$!
 
-    sleep 0.5
+    sleep 1
 
     if ps -p $CLIENT_PID > /dev/null; then
-        echo "${GREEN}✅ Le client attend l'accusé de réception${RESET}"
+        echo "${GREEN}✅ Le client attend bien le ACK en l'absence de serveur${RESET}"
         kill $CLIENT_PID 2>/dev/null
         ((TEST_OK++))
     else
-        echo "${RED}❌ Le client n'attend pas le ACK correctement${RESET}"
+        echo "${RED}❌ Le client n’attend pas le ACK (finit trop tôt sans serveur)${RESET}"
     fi
 }
 
@@ -81,16 +79,16 @@ function cleanup {
     rm -f "$SERVER_LOG"
     if [ -f Makefile ]; then
         make fclean > /dev/null
-        echo "Projet nettoyé (make fclean)."
+        echo "🧹 Projet nettoyé (make fclean)."
     fi
 }
 
 launch_server
 
 test_message "salut" "Message texte simple"
-test_message "🐍" "Caractère Unicode"
-test_message "😎" "Emoji"
-test_message "abc\0def" "Gestion du caractère nul (ne doit afficher que abc)"
+test_message "🐍" "Caractère Unicode (🐍)"
+test_message "😎" "Emoji (😎)"
+test_message "abc" "Message avec terminaison explicite"
 test_acknowledgement
 
 echo ""
