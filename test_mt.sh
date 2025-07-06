@@ -7,6 +7,11 @@ set +H # Désactive l'expansion de l'historique (!)
 # ╚════════════════════════════════════════════════════════════════════╝
 
 # === Configuration ===
+if [[ "$1" == "uninstall" ]]; then
+    bash "$(dirname "$0")/uninstall.sh"
+    exit 0
+fi
+
 SERVER="./server"
 CLIENT="./client"
 SERVER_LOG="server_output.log"
