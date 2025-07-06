@@ -11,6 +11,7 @@ SERVER="./server"
 CLIENT="./client"
 SERVER_LOG="server_output.log"
 CLIENT_TIMEOUT=10 # Temps max en secondes pour qu'un client termine (sécurité)
+SETTINGS_FILE=".tester_settings" # Fichier pour sauvegarder les paramètres
 
 # --- Couleurs & Styles ---
 C_RESET='\033[0m'
@@ -25,11 +26,6 @@ SUCCESS="${C_GREEN}${C_BOLD}[SUCCÈS]${C_RESET}"
 FAIL="${C_RED}${C_BOLD}[ÉCHEC]${C_RESET}"
 INFO="${C_BLUE}${C_BOLD}[INFO]${C_RESET}"
 WARN="${C_YELLOW}${C_BOLD}[ATTENTION]${C_RESET}"
-
-# === Paramètres configurables ===
-CLEAN_ON_EXIT=true
-AUTO_COMPILE=true
-SHOW_DIFF_ON_FAIL=true
 
 # === Banque de messages de test ===
 SIMPLE_MSGS=(
@@ -68,6 +64,27 @@ tests_failed=0
 SERVER_PID="" # Initialisation à vide est cruciale
 
 # ==================== Fonctions Principales ====================
+
+# === Sauvegarde et chargement des paramètres (NOUVEAU) ===
+save_settings() {
+    echo "CLEAN_ON_EXIT=$CLEAN_ON_EXIT" > "$SETTINGS_FILE"
+    echo "AUTO_COMPILE=$AUTO_COMPILE" >> "$SETTINGS_FILE"
+    echo "SHOW_DIFF_ON_FAIL=$SHOW_DIFF_ON_FAIL" >> "$SETTINGS_FILE"
+}
+
+load_settings() {
+    # Valeurs par défaut
+    CLEAN_ON_EXIT=true
+    AUTO_COMPILE=true
+    SHOW_DIFF_ON_FAIL=true
+
+    if [ -f "$SETTINGS_FILE" ]; then
+        source "$SETTINGS_FILE"
+    else
+        # Si le fichier n'existe pas, on le crée avec les valeurs par défaut
+        save_settings
+    fi
+}
 
 # === Dégradé propre : couleur entière par ligne ===
 gradient_line() {
@@ -131,7 +148,6 @@ cleanup() {
         server_was_running=true
     fi
 
-    # Affiche le message "Nettoyage" seulement si une action est nécessaire
     if [ "$server_was_running" = true ] || [ "$CLEAN_ON_EXIT" = true ]; then
         echo -e "\n$INFO Nettoyage..."
     fi
@@ -148,7 +164,7 @@ cleanup() {
     rm -f "$SERVER_LOG"
 }
 
-# === Fonction de désinstallation ===
+# === Fonction de désinstallation (AMÉLIORÉ) ===
 uninstall() {
     echo -e "$WARN Cette action va nettoyer le projet (make fclean) et ${C_BOLD}supprimer ce script (${0})${C_RESET}."
     read -p "Êtes-vous sûr de vouloir continuer? (y/n) " -n 1 -r
@@ -162,6 +178,9 @@ uninstall() {
             echo -e "$FAIL Aucun Makefile trouvé. Impossible de nettoyer le projet."
         fi
         
+        echo -e "$INFO Suppression du fichier de paramètres..."
+        rm -f "$SETTINGS_FILE"
+
         echo -e "$INFO Auto-destruction du script..."
         if rm -- "$0"; then
             echo -e "$SUCCESS Script '$0' supprimé."
@@ -186,14 +205,12 @@ print_setting_status() {
     fi
 }
 
-# === Menu des paramètres (CORRIGÉ) ===
+# === Menu des paramètres (AMÉLIORÉ) ===
 show_settings_menu() {
     while true; do
         clear
         fancy_title
         echo -e "${C_BOLD}--- Paramètres ---${C_RESET}"
-        echo -e "${C_YELLOW}(les paramètres sont réinitialisés à chaque lancement)${C_RESET}"
-        # Correction des backticks `` en guillemets simples ''
         echo " 1. Nettoyer le projet en quittant ('fclean') : $(print_setting_status $CLEAN_ON_EXIT)"
         echo " 2. Compiler automatiquement au lancement      : $(print_setting_status $AUTO_COMPILE)"
         echo " 3. Afficher le 'diff' en cas d'échec        : $(print_setting_status $SHOW_DIFF_ON_FAIL)"
@@ -201,7 +218,6 @@ show_settings_menu() {
         echo " r - Retour au menu principal"
         echo -n "> "
         read -r choice
-        # Correction de la logique pour changer les paramètres
         case "$choice" in
             1)
                 if [ "$CLEAN_ON_EXIT" = true ]; then CLEAN_ON_EXIT=false; else CLEAN_ON_EXIT=true; fi
@@ -215,6 +231,8 @@ show_settings_menu() {
             r|R) break ;;
             *) echo "Choix invalide." && sleep 1 ;;
         esac
+        # Sauvegarde des changements
+        save_settings
     done
 }
 
@@ -361,6 +379,8 @@ run_multi_client_test() {
 }
 
 # ==================== Exécution Principale ====================
+
+load_settings # Charge les paramètres au début
 
 if [ "$1" == "uninstall" ]; then
     uninstall
