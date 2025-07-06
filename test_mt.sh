@@ -235,30 +235,30 @@ show_settings_menu() {
     done
 }
 
-# === Menu principal ===
+# === Menu principal (AMÉLIORÉ) ===
 show_menu() {
     while true; do
         clear
         fancy_title
         echo -e "${C_BOLD}Sélectionne les tests à lancer :${C_RESET}"
+        echo " 0 - Tous les tests"
         echo " 1 - Message simple (aléatoire)"
         echo " 2 - Chaîne vide"
         echo " 3 - Emoji / Unicode (aléatoire)"
         echo " 4 - Long message (1000)"
         echo " 5 - Clients multiples (aléatoire)"
-        echo " 0 - Tous les tests"
-        echo " s - Paramètres"
+        echo " p - Paramètres"
         echo " q - Quitter"
         echo -n "> "
         read -r choice
         case "$choice" in
+            0) tests=(1 2 3 4 5); break ;;
             1) tests=(1); break ;;
             2) tests=(2); break ;;
             3) tests=(3); break ;;
             4) tests=(4); break ;;
             5) tests=(5); break ;;
-            0) tests=(1 2 3 4 5); break ;;
-            s|S) show_settings_menu ;;
+            p|P) show_settings_menu ;;
             q|Q) echo "Annulé."; exit 0 ;;
             *) echo "Choix invalide." && sleep 1 ;;
         esac
@@ -301,11 +301,14 @@ run_test() {
         return
     fi
 
+    # L'utilisation de timeout est la clé de la compatibilité.
+    # Un client sans ACK se terminera bien avant le timeout.
+    # Un client avec ACK qui ne reçoit pas de réponse sera tué par le timeout, faisant échouer le test, ce qui est correct.
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$message_sent"
     local client_exit_code=$?
 
     if [ $client_exit_code -eq 124 ]; then
-        echo -e "$FAIL Le client a dépassé le temps imparti de ${CLIENT_TIMEOUT}s. Le serveur est-il bloqué ?"
+        echo -e "$FAIL Le client a dépassé le temps imparti de ${CLIENT_TIMEOUT}s. Le serveur est-il bloqué ou ne renvoie-t-il pas d'ACK ?"
         ((tests_failed++))
         return
     elif [ $client_exit_code -ne 0 ]; then
@@ -352,6 +355,8 @@ run_multi_client_test() {
     expected_output=$(printf "%s\n%s\n%s" "$msg1" "$msg2" "$msg3")
 
     echo -e "$INFO Envoi de 3 messages à la suite, avec une pause entre chaque..."
+    # La pause est essentielle pour la compatibilité avec les projets qui ont le bonus ACK.
+    # Elle laisse le temps au serveur de répondre avant que le client suivant ne commence.
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg1" || { echo -e "$FAIL Le client 1 a échoué."; ((tests_failed++)); return; }
     sleep 0.2
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg2" || { echo -e "$FAIL Le client 2 a échoué."; ((tests_failed++)); return; }
