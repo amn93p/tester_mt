@@ -1,208 +1,157 @@
 #!/bin/bash
 
 # ==============================================================================
-#                      MINITALK UNIVERSAL TESTER
+# |                                                                            |
+# |                 --= Universal Minitalk Tester (Advanced) =--               |
+# |                                                                            |
+# |      Ce script teste la partie obligatoire ET le bonus (ACK).              |
+# |      Il utilise un système de timeout pour valider l'accusé de réception.  |
+# |                                                                            |
 # ==============================================================================
-# Ce script teste la fonctionnalité d'un projet Minitalk (client/serveur)
-# en se basant sur le comportement attendu plutôt que sur des détails
-# d'implémentation spécifiques.
-#
-# Principales améliorations par rapport à une version basique :
-#   1. Détection de PID flexible : Trouve le premier nombre que le serveur
-#      affiche, peu importe le formatage (ex: "PID: 123" ou juste "123").
-#   2. Attente active (Polling) : Au lieu d'un `sleep` fixe, le script
-#      vérifie activement si le message est arrivé, avec un timeout.
-#      Cela s'adapte aux implémentations rapides comme aux plus lentes.
-#   3. Configuration facile : Les noms des binaires et le timeout sont
-#      aisément modifiables au début du script.
-#   4. Messages d'erreur clairs : En cas d'échec, le script montre ce qui
-#      était attendu et ce qui a été reçu.
-# ==============================================================================
-
 
 # --- Configuration ---
-# Noms des exécutables. Modifiez-les si votre projet utilise des noms différents.
-CLIENT_BIN="./client"
-SERVER_BIN="./server"
+SERVER_EXEC="./server"
+CLIENT_EXEC="./client"
+SERVER_LOG="server.log"
+# Timeout en secondes pour le client. S'il dépasse ce temps, il est tué.
+# Un client avec bonus DOIT se terminer avant ce timeout.
+CLIENT_TIMEOUT=5 
 
-# Fichier de log pour la sortie du serveur.
-SERVER_LOG="server_output.log"
+# --- Couleurs ---
+C_RESET='\033[0m'
+C_RED='\033[0;31m'
+C_GREEN='\033[0;32m'
+C_YELLOW='\033[0;33m'
+C_BLUE='\033[0;34m'
+C_CYAN='\033[0;36m'
+C_BOLD='\033[1m'
 
-# Timeout en secondes pour attendre la réception d'un message par le serveur.
-MESSAGE_TIMEOUT=5
+# --- Variables de suivi ---
+tests_passed=0
+tests_failed=0
+test_count=0
 
+# --- Fonctions ---
 
-# --- Couleurs pour l'affichage ---
-GREEN=$(tput setaf 2)
-RED=$(tput setaf 1)
-YELLOW=$(tput setaf 3)
-RESET=$(tput sgr0)
+print_header() {
+    echo -e "${C_CYAN}${C_BOLD}"
+    echo "    __  __ _       _ _   _      _   _             "
+    echo "   |  \\/  (_)     (_) | | |    | | | |   _ __  _   "
+    echo "   | \\  / |_ _ __  _| |_| | ___| |_| |_ | '_ \\| | | |"
+    echo "   | |\\/| | | '_ \\| | __| |/ _ \\ __| __|| |_) | |_| |"
+    echo "   | |  | | | | | | | |_| |  __/ |_| || .__/ \\__, |"
+    echo "   |_|  |_|_|_| |_|_|\\__|_|\\___|\\__|\\__||_|    |___/ "
+    echo "                      Advanced w/ ACK & Timeout Test"
+    echo -e "${C_RESET}"
+}
 
-
-# --- Variables globales ---
-TEST_OK=0
-TEST_TOTAL=0
-SERVER_PROCESS_ID=0
-SERVER_REAL_PID=""
-
-
-# --- Fonctions de test ---
-
-## 🔎 Étape 1 : Compilation
-# Vérifie la présence des binaires ou tente de les compiler avec 'make'.
-function check_and_compile {
-    echo "🔎 Vérification des binaires '${CLIENT_BIN}' et '${SERVER_BIN}'..."
-    if [ ! -x "$CLIENT_BIN" ] || [ ! -x "$SERVER_BIN" ]; then
-        echo "${YELLOW}Binaires non trouvés. Tentative de compilation avec 'make'...${RESET}"
-        if [ ! -f "Makefile" ]; then
-            echo "${RED}❌ Aucun Makefile trouvé. Impossible de compiler.${RESET}"
-            exit 1
-        fi
-        
-        make_output=$(make 2>&1)
-        if [ $? -ne 0 ]; then
-            echo "${RED}❌ La compilation a échoué. Erreur :${RESET}"
-            echo "$make_output"
-            exit 1
-        fi
-        echo "${GREEN}✅ Compilation réussie.${RESET}"
+start_server() {
+    echo -e "${C_YELLOW}🚀 Démarrage du serveur...${C_RESET}"
+    ./$SERVER_EXEC > "$SERVER_LOG" 2>&1 &
+    SERVER_PID=$!
+    sleep 0.5
+    if ! ps -p $SERVER_PID > /dev/null; then
+        echo -e "${C_RED}❌ ERREUR: Le serveur n'a pas pu démarrer.${C_RESET}"
+        cat "$SERVER_LOG"; exit 1
     fi
-
-    if [ ! -x "$CLIENT_BIN" ] || [ ! -x "$SERVER_BIN" ]; then
-        echo "${RED}❌ Les binaires sont toujours introuvables après la compilation.${RESET}"
-        exit 1
-    fi
+    echo -e "${C_GREEN}✅ Serveur démarré avec le PID: ${C_BOLD}$SERVER_PID${C_RESET}\n"
 }
 
-## 🚀 Étape 2 : Lancement du serveur
-# Lance le serveur et capture son PID de manière flexible.
-function launch_server {
-    echo "🚀 Lancement du serveur..."
-    > "$SERVER_LOG" # Nettoie le log précédent
-    
-    # Lance le serveur en arrière-plan et stocke son PID de processus
-    $SERVER_BIN > "$SERVER_LOG" 2>&1 &
-    SERVER_PROCESS_ID=$!
-
-    echo "⏳ Attente du PID affiché par le serveur..."
-    # Boucle pendant 5s max pour trouver le PID dans le log du serveur.
-    # Cette méthode est universelle car elle cherche le PREMIER nombre affiché.
-    for i in {1..50}; do
-        SERVER_REAL_PID=$(grep -o -m 1 '[0-9]\+' "$SERVER_LOG")
-        if [[ "$SERVER_REAL_PID" =~ ^[0-9]+$ ]]; then
-            echo "${GREEN}PID du serveur capturé : $SERVER_REAL_PID${RESET}"
-            return
-        fi
-        sleep 0.1
-    done
-
-    echo "${RED}❌ Le PID du serveur n'a pas été trouvé dans '$SERVER_LOG' après 5 secondes.${RESET}"
-    echo "--- Contenu du log serveur ---"
-    cat "$SERVER_LOG"
-    echo "----------------------------"
-    kill $SERVER_PROCESS_ID 2>/dev/null
-    exit 1
-}
-
-## 🧪 Étape 3 : Test de transmission de messages
-# Envoie un message et vérifie activement sa réception.
-function test_message {
-    local MESSAGE="$1"
-    local DESCRIPTION="$2"
-    ((TEST_TOTAL++))
-    
-    echo -n "   - Test: $DESCRIPTION..."
-
-    # Le client est exécuté et sa sortie n'est pas masquée pour voir les erreurs.
-    $CLIENT_BIN "$SERVER_REAL_PID" "$MESSAGE"
-    
-    # Boucle d'attente active (polling) avec timeout.
-    local start_time=$(date +%s)
-    while true; do
-        # `tr -d '\0'` supprime les octets nuls qui peuvent gêner `grep`.
-        # `grep -qF` cherche une chaîne de caractères fixe silencieusement.
-        if tr -d '\0' < "$SERVER_LOG" | grep -qF -- "$MESSAGE"; then
-            echo " ${GREEN}✅ Reçu${RESET}"
-            ((TEST_OK++))
-            return
-        fi
-        
-        local current_time=$(date +%s)
-        if (( current_time - start_time >= MESSAGE_TIMEOUT )); then
-            echo " ${RED}❌ Échec (Timeout)${RESET}"
-            echo "     Message attendu: '$MESSAGE'"
-            echo "     Log du serveur:"
-            echo "     ----------------"
-            # Affiche les 5 dernières lignes du log pour le diagnostic.
-            tail -n 5 "$SERVER_LOG" | sed 's/^/     /'
-            echo "     ----------------"
-            return
-        fi
-        sleep 0.1
-    done
-}
-
-## 🤝 Étape 4 : Test de l'accusé de réception (ACK)
-# Vérifie si le client se bloque quand le serveur n'envoie pas d'ACK.
-function test_acknowledgement {
-    ((TEST_TOTAL++))
-    echo -n "   - Test: Le client attend l'accusé de réception (ACK)..."
-
-    # Lance un client vers un PID invalide en arrière-plan.
-    ($CLIENT_BIN 999999 "test_ack" > /dev/null 2>&1) &
-    local CLIENT_PID=$!
-
-    sleep 2 # Laisse le temps au client de se lancer et de se bloquer.
-
-    # Vérifie si le processus client est toujours en cours d'exécution.
-    if ps -p $CLIENT_PID > /dev/null; then
-        echo " ${GREEN}✅ Bloqué (comportement attendu)${RESET}"
-        kill $CLIENT_PID 2>/dev/null # Termine le client qui est bloqué.
-        ((TEST_OK++))
+kill_server() {
+    echo
+    echo -e "${C_YELLOW}🛑 Arrêt du serveur (PID: $SERVER_PID)...${C_RESET}"
+    if ps -p $SERVER_PID > /dev/null; then
+        kill $SERVER_PID; wait $SERVER_PID 2>/dev/null
+        echo -e "${C_GREEN}✅ Serveur arrêté.${C_RESET}"
     else
-        echo " ${RED}❌ Échec (le client n'a pas attendu l'ACK)${RESET}"
-    fi
-}
-
-
-## 🧹 Étape 5 : Nettoyage
-# Arrête le serveur et supprime les fichiers générés.
-function cleanup {
-    echo "🧹 Nettoyage des processus et des fichiers..."
-    if [ $SERVER_PROCESS_ID -ne 0 ]; then
-        kill $SERVER_PROCESS_ID 2>/dev/null
+        echo -e "${C_YELLOW}ℹ️ Le serveur n'était plus en cours d'exécution.${C_RESET}"
     fi
     rm -f "$SERVER_LOG"
-    if [ -f "Makefile" ] && grep -q "fclean:" "Makefile"; then
-        make fclean > /dev/null 2>&1
-    fi
 }
 
+# Fonction de test, maintenant avec gestion du timeout pour l'ACK
+run_test() {
+    local description="$1"
+    local test_string="$2"
+    local client_status=0
+    
+    ((test_count++))
+    echo -e "${C_BLUE}${C_BOLD}[TEST $test_count]${C_RESET} - ${description}"
+    > "$SERVER_LOG"
 
-# --- Exécution principale ---
-trap cleanup EXIT # Assure que la fonction cleanup est appelée à la fin du script.
+    # Lance le client en arrière-plan pour pouvoir le surveiller
+    ./$CLIENT_EXEC $SERVER_PID "$test_string" &
+    CLIENT_PID=$!
 
-check_and_compile
+    # Lance un "gardien" qui tuera le client s'il ne se termine pas à temps
+    # C'est le test clé pour l'ACK : le serveur doit répondre avant le timeout.
+    (sleep $CLIENT_TIMEOUT && kill $CLIENT_PID 2>/dev/null && echo -e "   -> ${C_RED}${C_BOLD}TIMEOUT ⏰${C_RESET}") &
+    WATCHER_PID=$!
 
-launch_server
+    # Attend la fin du client
+    wait $CLIENT_PID 2>/dev/null
+    client_status=$?
 
-echo -e "\n--- Début des tests de transmission ---"
-test_message "salut" "Message simple"
-test_message "Ceci est une chaîne de caractères plus longue avec des espaces" "Phrase longue"
-test_message "42" "Nombres"
-test_message "特殊文字" "Caractères Unicode (Japonais)"
-test_message "The quick brown 🦊 jumps over the lazy 🐶" "Phrase complexe avec emojis"
-test_message "" "Chaîne vide (cas particulier)"
+    # "Désarmer" le gardien (s'il n'a pas déjà agi)
+    kill $WATCHER_PID 2>/dev/null
+    wait $WATCHER_PID 2>/dev/null
 
-echo -e "\n--- Début des tests de comportement ---"
-test_acknowledgement
+    # --- Vérification des résultats ---
+    # 1. Le client a-t-il été tué par le timeout ?
+    if [ $client_status -ne 0 ]; then
+        echo -e "   -> ${C_RED}${C_BOLD}ÉCHEC : Le client a été terminé (timeout de $CLIENT_TIMEOUT s dépassé). Soit le client attend un ACK que le serveur n'envoie pas, soit le serveur est trop lent.${C_RESET}"
+        ((tests_failed++))
+    else
+        # 2. Si le client s'est bien terminé, le message est-il correct ?
+        sleep 0.1 # Petite marge pour que le dernier caractère s'imprime dans le log
+        local server_output=$(cat "$SERVER_LOG" | tr -d '\n')
+        local expected_string=$(echo -n "$test_string" | tr -d '\n')
 
-# --- Bilan ---
-echo ""
-echo "--- Bilan des tests ---"
-if [ "$TEST_OK" -eq "$TEST_TOTAL" ]; then
-    echo "${GREEN}✅ Tous les tests sont passés ! ($TEST_OK/$TEST_TOTAL)${RESET}"
-else
-    echo "${RED}❌ $TEST_OK tests réussis sur $TEST_TOTAL.${RESET}"
+        if [[ "$server_output" == "$expected_string" ]]; then
+            echo -e "   -> ${C_GREEN}${C_BOLD}SUCCÈS ✅ (Client terminé à temps et message correct)${C_RESET}"
+            ((tests_passed++))
+        else
+            echo -e "   -> ${C_RED}${C_BOLD}ÉCHEC ❌ (Client terminé, mais message incorrect)${C_RESET}"
+            echo -e "      ${C_YELLOW}Attendu :${C_RESET} '$expected_string'"
+            echo -e "      ${C_YELLOW}Reçu    :${C_RESET} '$server_output'"
+            ((tests_failed++))
+        fi
+    fi
+    echo
+}
+
+# --- Séquence de test principale ---
+
+print_header
+
+if [ ! -f "$SERVER_EXEC" ] || [ ! -x "$SERVER_EXEC" ]; then
+    echo -e "${C_RED}❌ ERREUR: Serveur '$SERVER_EXEC' introuvable ou non exécutable.${C_RESET}"; exit 1
 fi
-echo "-----------------------"
+if [ ! -f "$CLIENT_EXEC" ] || [ ! -x "$CLIENT_EXEC" ]; then
+    echo -e "${C_RED}❌ ERREUR: Client '$CLIENT_EXEC' introuvable ou non exécutable.${C_RESET}"; exit 1
+fi
+
+start_server
+
+# --- Suite de tests ---
+run_test "Chaîne ASCII simple" "Hello Minitalk, with ACK test!"
+run_test "Chaîne vide" ""
+run_test "Chaîne avec caractères spéciaux" "\"\$'\t*&^%#@![]{}()\\"
+long_string=$(head -c 2000 /dev/urandom | base64 | tr -d '\n' | head -c 2000)
+run_test "Longue chaîne (2000 caractères)" "$long_string"
+run_test "Chaîne avec caractères Unicode (UTF-8)" "👋 Hey, ça va ? 測試 ✅ 絵文字"
+
+kill_server
+
+# --- Résumé ---
+echo -e "${C_CYAN}${C_BOLD}========== Résumé des Tests ==========${C_RESET}"
+echo -e "Total: ${C_BOLD}$test_count${C_RESET} | ${C_GREEN}Succès: ${C_BOLD}$tests_passed${C_RESET} | ${C_RED}Échecs: ${C_BOLD}$tests_failed${C_RESET}"
+echo -e "${C_CYAN}${C_BOLD}=====================================${C_RESET}"
+
+if [ $tests_failed -eq 0 ]; then
+    echo -e "\n${C_GREEN}${C_BOLD}🎉 Excellent travail ! Le projet semble robuste et gère correctement l'ACK ! 🎉${C_RESET}"
+    exit 0
+else
+    echo -e "\n${C_RED}${C_BOLD}🔥 Il y a des erreurs. Vérifie la gestion des signaux, l'envoi de l'ACK par le serveur ou les timeouts. 🔥${C_RESET}"
+    exit 1
+fi
