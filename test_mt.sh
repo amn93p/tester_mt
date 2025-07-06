@@ -6,12 +6,7 @@ set +H # Désactive l'expansion de l'historique (!)
 # ║     Parfait pour le sujet 42 + bonus Unicode & ACK               ║
 # ╚════════════════════════════════════════════════════════════════════╝
 
-if [[ "$1" == "uninstall" ]]; then
-    echo "🧹 Désinstallation de tester_mt..."
-    rm -- "$0" && echo "✅ Supprimé : $0" || echo "❌ Échec de la suppression"
-    exit 0
-fi
-
+# === Configuration ===
 SERVER="./server"
 CLIENT="./client"
 SERVER_LOG="server_output.log"
@@ -29,6 +24,8 @@ C_BOLD='\033[1m'
 SUCCESS="${C_GREEN}${C_BOLD}[SUCCÈS]${C_RESET}"
 FAIL="${C_RED}${C_BOLD}[ÉCHEC]${C_RESET}"
 INFO="${C_BLUE}${C_BOLD}[INFO]${C_RESET}"
+WARN="${C_YELLOW}${C_BOLD}[ATTENTION]${C_RESET}"
+
 
 # --- Compteurs ---
 tests_passed=0
@@ -80,7 +77,6 @@ compile_project() {
     echo -e "$SUCCESS Compilation terminée."
 }
 
-
 # === Nettoyage (AMÉLIORÉ avec make fclean) ===
 cleanup() {
     echo -e "\n$INFO Nettoyage..."
@@ -98,7 +94,37 @@ cleanup() {
         make fclean > /dev/null 2>&1
     fi
 }
-trap cleanup EXIT
+# Le trap est défini plus tard pour ne pas interférer avec l'uninstall
+
+# === Fonction de désinstallation (AMÉLIORÉ) ===
+uninstall() {
+    echo -e "$WARN Cette action va nettoyer le projet (make fclean) et ${C_BOLD}supprimer ce script (${0})${C_RESET}."
+    read -p "Êtes-vous sûr de vouloir continuer? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo -e "$INFO Nettoyage du projet via 'make fclean'..."
+        if [ -f "Makefile" ] || [ -f "makefile" ]; then
+            make fclean
+            echo -e "$SUCCESS Projet nettoyé."
+        else
+            echo -e "$FAIL Aucun Makefile trouvé. Impossible de nettoyer le projet."
+        fi
+        
+        echo -e "$INFO Auto-destruction du script..."
+        if rm -- "$0"; then
+            echo -e "$SUCCESS Script '$0' supprimé."
+            # On désactive le trap pour éviter qu'il ne s'exécute après la suppression
+            trap - EXIT
+            exit 0
+        else
+            echo -e "$FAIL Impossible de supprimer le script '$0'."
+            exit 1
+        fi
+    else
+        echo -e "$INFO Désinstallation annulée."
+        exit 0
+    fi
+}
 
 # === Démarrage du serveur ===
 start_server() {
@@ -233,6 +259,15 @@ show_menu() {
 }
 
 # ==================== Exécution Principale ====================
+
+# Gérer les arguments de la ligne de commande (NOUVEAU)
+if [ "$1" == "uninstall" ]; then
+    uninstall
+fi
+
+# Le trap est activé seulement si on ne désinstalle pas
+trap cleanup EXIT
+
 fancy_title
 compile_project # <-- Vérification et compilation ici
 show_menu
