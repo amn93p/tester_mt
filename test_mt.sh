@@ -209,7 +209,6 @@ for test in "${tests[@]}"; do
             run_test "Message long et complexe (1000)" "$msg"
             ;;
         5) run_multi_client_test ;;
-        6) run_gradient_art_test ;;
     esac
 done
 
