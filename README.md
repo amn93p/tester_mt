@@ -29,12 +29,12 @@ Nom du script : `test_mt.sh`
 
 2. Télécharge et utilise l'installateur :
 
-```curl -sSL https://raw.githubusercontent.com/amn93p/tester_mt/main/installer.sh | bash
+```bash curl -sSL https://raw.githubusercontent.com/amn93p/tester_mt/main/installer.sh | bash
 ```
 
 3. Lance le script :
 
-```test_mt.sh
+```bash test_mt.sh
 ```
 
 ---
