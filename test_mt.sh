@@ -1,16 +1,17 @@
 #!/bin/bash
-set +H # Désactive l'expansion de l'historique (!)
+set +H # Désactive l'expansion de l'historique via '!'
 
-# ╔════════════════════════════════════════════════════════════════════╗
-# ║           Testeur Minitalk Interactif (Amélioré)                   ║
-# ║     Parfait pour le sujet 42 + bonus Unicode & ACK               ║
-# ╚════════════════════════════════════════════════════════════════════╝
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║             Testeur Minitalk Interactif (v4 - Compact)               ║
+# ║          Parfait pour le sujet 42 + bonus Unicode & ACK              ║
+# ║  Améliorations : Mode compact pour "Tous les tests", serveur unique  ║
+# ╚══════════════════════════════════════════════════════════════════════╝
 
 # === Configuration ===
 SERVER="./server"
 CLIENT="./client"
 SERVER_LOG="server_output.log"
-CLIENT_TIMEOUT=15 # Timeout généreux pour ne pas pénaliser les implémentations plus lentes
+CLIENT_TIMEOUT=15 # Timeout généreux pour ne pas pénaliser les implémentations lentes
 
 # Détermine le répertoire du script pour y stocker les paramètres
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
@@ -22,21 +23,22 @@ C_RED='\033[0;31m'
 C_GREEN='\033[0;32m'
 C_YELLOW='\033[0;33m'
 C_BLUE='\033[0;34m'
+C_CYAN='\033[0;36m'
 C_BOLD='\033[1m'
-C_MAGENTA='\033[0;35m'
+C_DIM='\033[2m'
 
 # --- Préfixes de message ---
-SUCCESS="${C_GREEN}${C_BOLD}[SUCCÈS]${C_RESET}"
-FAIL="${C_RED}${C_BOLD}[ÉCHEC]${C_RESET}"
-INFO="${C_BLUE}${C_BOLD}[INFO]${C_RESET}"
-WARN="${C_YELLOW}${C_BOLD}[ATTENTION]${C_RESET}"
-DEBUG="${C_MAGENTA}${C_BOLD}[DÉBOGAGE]${C_RESET}"
+SUCCESS="${C_GREEN}${C_BOLD}[✓ SUCCÈS]${C_RESET}"
+FAIL="${C_RED}${C_BOLD}[✗ ÉCHEC]${C_RESET}"
+INFO="${C_BLUE}${C_BOLD}[i INFO]${C_RESET}"
+WARN="${C_YELLOW}${C_BOLD}[⚠ ATTENTION]${C_RESET}"
+DEBUG_PREFIX="${C_CYAN}${C_BOLD}[⚙ DÉBOGAGE]${C_RESET}"
 
 # === Banque de messages de test ===
 SIMPLE_MSGS=(
     "Hello World!"
-    "Minitalk est génial"
-    "42 est la réponse à tout"
+    "Minitalk est genial"
+    "42 est la reponse a tout"
     "Ceci est un message de test."
     "abcdefghijklmnopqrstuvwxyz"
     "0123456789"
@@ -55,22 +57,22 @@ UNICODE_MSGS=(
 MULTI_CLIENT_MSGS=(
     "Message du client A"
     "Le client B dit bonjour"
-    "Le client C est là"
-    "Première partie"
-    "Deuxième partie"
+    "Le client C est la"
+    "Premiere partie"
+    "Deuxieme partie"
     "Partie finale"
     "Un autre message"
     "Et encore un !"
 )
 
-# --- Compteurs ---
+# --- Variables Globales ---
 tests_passed=0
 tests_failed=0
 SERVER_PID="" # Initialisation à vide est cruciale
+COMPACT_MODE=false # Flag pour l'affichage des tests
 
 # ==================== Fonctions Principales ====================
 
-# === Sauvegarde et chargement des paramètres ===
 save_settings() {
     echo "CLEAN_ON_EXIT=$CLEAN_ON_EXIT" > "$SETTINGS_FILE"
     echo "AUTO_COMPILE=$AUTO_COMPILE" >> "$SETTINGS_FILE"
@@ -81,49 +83,34 @@ save_settings() {
 }
 
 load_settings() {
-    # Valeurs par défaut
     CLEAN_ON_EXIT=false
     AUTO_COMPILE=true
-    SHOW_DIFF_ON_FAIL=false
+    SHOW_DIFF_ON_FAIL=true
     DEBUG_MODE=false
-    ACK_MODE=false # Par défaut, on teste sans le bonus ACK
-    LENIENT_MODE=true # Par défaut, la comparaison est stricte
-
+    ACK_MODE=false
+    LENIENT_MODE=false
     if [ -f "$SETTINGS_FILE" ]; then
         source "$SETTINGS_FILE"
     else
-        # Si le fichier n'existe pas, on le crée avec les valeurs par défaut
         save_settings
     fi
 }
 
-# === Dégradé propre : couleur entière par ligne ===
-gradient_line() {
-    local text="$1"
-    local r=$((RANDOM % 156 + 100))
-    local g=$((RANDOM % 156 + 100))
-    local b=$((RANDOM % 156 + 100))
-    echo -e "\033[38;2;${r};${g};${b}m${text}\033[0m"
+print_separator() {
+    printf "${C_DIM}%*s\n${C_RESET}" "$(tput cols)" '' | tr ' ' '─'
 }
 
-# === ASCII art stylisé pour le titre du testeur ===
-fancy_title() {
-    echo
-    gradient_line "  _______ __  __ _______ "
-    gradient_line " |__   __|  \/  |__   __|"
-    gradient_line "    | |  | \  / |  | |   "
-    gradient_line "    | |  | |\/| |  | |   "
-    gradient_line "    | |  | |  | |  | |   "
-    gradient_line "    |_|  |_|  |_|  |_|   "
-    echo
+show_title() {
+    echo -e "╔══════════════════════════╗"
+    echo -e "║ ${C_YELLOW}      Minitalkette      ${C_RESET} ║"
+    echo -e "╚══════════════════════════╝"
 }
 
-# === Compilation du projet ===
 compile_project() {
+    print_separator
     echo -e "$INFO Vérification de la présence d'un Makefile..."
     if [ ! -f "Makefile" ] && [ ! -f "makefile" ]; then
-        echo -e "$FAIL Aucun Makefile trouvé. Impossible de lancer la compilation."
-        echo -e "$INFO Assurez-vous que le testeur est dans le répertoire racine de votre projet Minitalk."
+        echo -e "$FAIL Aucun Makefile trouvé. Impossible de compiler."
         exit 1
     fi
     echo -e "$SUCCESS Makefile trouvé."
@@ -134,120 +121,82 @@ compile_project() {
     local make_exit_code=$?
 
     if [ $make_exit_code -ne 0 ]; then
-        echo -e "$FAIL La compilation a échoué. Veuillez corriger les erreurs."
-        echo -e "--- Sortie de Make ---"
-        echo "$make_output"
-        echo "----------------------"
+        echo -e "$FAIL La compilation a échoué."
+        echo -e "${C_DIM}--- Sortie de Make ---${C_RESET}\n$make_output\n${C_DIM}----------------------${C_RESET}"
         exit 1
     fi
 
-    if [[ "$make_output" == *"Nothing to be done"* ]]; then
+    if [[ "$make_output" == *"Nothing to be done"* || "$make_output" == *"est à jour"* ]]; then
         echo -e "$INFO Le projet est déjà à jour."
     else
         echo -e "$SUCCESS Compilation terminée."
     fi
 }
 
-# === Nettoyage ===
 cleanup() {
-    local server_was_running=false
+    echo # Newline for cleaner exit
     if [[ -n "$SERVER_PID" ]] && ps -p "$SERVER_PID" > /dev/null; then
-        server_was_running=true
-    fi
-
-    if [ "$server_was_running" = true ] || [ "$CLEAN_ON_EXIT" = true ]; then
-        echo -e "\n$INFO Nettoyage..."
-    fi
-
-    if [ "$server_was_running" = true ]; then
+        echo -e "$INFO Arrêt du serveur (PID: $SERVER_PID)..."
         kill "$SERVER_PID" 2>/dev/null
     fi
 
     if [ "$CLEAN_ON_EXIT" = true ]; then
         if [ -f "Makefile" ] || [ -f "makefile" ]; then
+            echo -e "$INFO Nettoyage du projet (make fclean)..."
             make fclean > /dev/null 2>&1
         fi
     fi
     rm -f "$SERVER_LOG"
+    echo -e "$INFO Fichiers temporaires supprimés. Au revoir !"
 }
 
-# === Fonction de désinstallation ===
 uninstall() {
     clear
+    show_title
     echo -e "$WARN Cette action va nettoyer le projet (make fclean) et ${C_BOLD}supprimer ce script (${0})${C_RESET}."
-    read -p "Êtes-vous sûr de vouloir continuer? (y/n) " -n 1 -r
+    read -p "Êtes-vous sûr de vouloir continuer? (o/n) " -n 1 -r
     echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
+    if [[ $REPLY =~ ^[Oo]$ ]]; then
         echo -e "$INFO Nettoyage du projet via 'make fclean'..."
-        if [ -f "Makefile" ] || [ -f "makefile" ]; then
-            make fclean
-            echo -e "$SUCCESS Projet nettoyé."
-        else
-            echo -e "$FAIL Aucun Makefile trouvé. Impossible de nettoyer le projet."
-        fi
-        
-        echo -e "$INFO Suppression du fichier de paramètres..."
+        make fclean 2>/dev/null
+        echo -e "$INFO Suppression du fichier de paramètres et du script..."
         rm -f "$SETTINGS_FILE"
-
-        echo -e "$INFO Auto-destruction du script..."
         if rm -- "$0"; then
-            echo -e "$SUCCESS Script '$0' supprimé."
+            echo -e "$SUCCESS Désinstallation terminée."
             trap - EXIT
             exit 0
-        else
-            echo -e "$FAIL Impossible de supprimer le script '$0'."
-            exit 1
         fi
     else
         echo -e "$INFO Désinstallation annulée."
-        exit 0
     fi
 }
 
-# === Affichage d'un paramètre ===
 print_setting_status() {
-    if [ "$1" = true ]; then
-        echo -e "${C_GREEN}Activé${C_RESET}"
-    else
-        echo -e "${C_RED}Désactivé${C_RESET}"
-    fi
+    if [ "$1" = true ]; then echo -e "${C_GREEN}Activé${C_RESET}"; else echo -e "${C_RED}Désactivé${C_RESET}"; fi
 }
 
-# === Menu des paramètres (AMÉLIORÉ) ===
 show_settings_menu() {
     while true; do
         clear
-        fancy_title
+        show_title
         echo -e "${C_BOLD}--- Paramètres ---${C_RESET}"
-        echo " 1. Nettoyer le projet en quittant ('fclean') : $(print_setting_status $CLEAN_ON_EXIT)"
+        echo " 1. Nettoyer en quittant ('fclean')          : $(print_setting_status $CLEAN_ON_EXIT)"
         echo " 2. Compiler automatiquement au lancement      : $(print_setting_status $AUTO_COMPILE)"
         echo " 3. Afficher le 'diff' en cas d'échec        : $(print_setting_status $SHOW_DIFF_ON_FAIL)"
         echo " 4. Mode Débogage (voir sortie brute)        : $(print_setting_status $DEBUG_MODE)"
         echo " 5. Mode Accusé de Réception (ACK) [BONUS]   : $(print_setting_status $ACK_MODE)"
-        echo " 6. Mode de comparaison indulgent             : $(print_setting_status $LENIENT_MODE)"
-        echo ""
+        echo " 6. Mode comparaison indulgent [¹]          : $(print_setting_status $LENIENT_MODE)"
+        echo -e "\n${C_DIM}[1] Ignore les espaces et sauts de ligne superflus.${C_RESET}\n"
         echo " r - Retour au menu principal"
         echo -n "> "
         read -r choice
         case "$choice" in
-            1)
-                if [ "$CLEAN_ON_EXIT" = true ]; then CLEAN_ON_EXIT=false; else CLEAN_ON_EXIT=true; fi
-                ;;
-            2)
-                if [ "$AUTO_COMPILE" = true ]; then AUTO_COMPILE=false; else AUTO_COMPILE=true; fi
-                ;;
-            3)
-                if [ "$SHOW_DIFF_ON_FAIL" = true ]; then SHOW_DIFF_ON_FAIL=false; else SHOW_DIFF_ON_FAIL=true; fi
-                ;;
-            4)
-                if [ "$DEBUG_MODE" = true ]; then DEBUG_MODE=false; else DEBUG_MODE=true; fi
-                ;;
-            5)
-                if [ "$ACK_MODE" = true ]; then ACK_MODE=false; else ACK_MODE=true; fi
-                ;;
-            6)
-                if [ "$LENIENT_MODE" = true ]; then LENIENT_MODE=false; else LENIENT_MODE=true; fi
-                ;;
+            1) CLEAN_ON_EXIT=$(! $CLEAN_ON_EXIT) ;;
+            2) AUTO_COMPILE=$(! $AUTO_COMPILE) ;;
+            3) SHOW_DIFF_ON_FAIL=$(! $SHOW_DIFF_ON_FAIL) ;;
+            4) DEBUG_MODE=$(! $DEBUG_MODE) ;;
+            5) ACK_MODE=$(! $ACK_MODE) ;;
+            6) LENIENT_MODE=$(! $LENIENT_MODE) ;;
             r|R) break ;;
             *) echo "Choix invalide." && sleep 1 ;;
         esac
@@ -255,133 +204,143 @@ show_settings_menu() {
     done
 }
 
-# === Menu principal (AMÉLIORÉ) ===
 show_menu() {
-    while true; do
-        clear
-        fancy_title
-        echo -e "${C_BOLD}Sélectionne les tests à lancer :${C_RESET}"
-        echo " 0 - Tous les tests"
-        echo " 1 - Message simple (aléatoire)"
-        echo " 2 - Chaîne vide"
-        echo " 3 - Bonus: Emoji / Unicode (aléatoire)"
-        echo " 4 - Long message (1000)"
-        echo " 5 - Clients multiples (aléatoire)"
-        echo " p - Paramètres"
-        echo " q - Quitter"
-        echo -n "> "
-        read -r choice
-        case "$choice" in
-            0) tests=(1 2 3 4 5); break ;;
-            1) tests=(1); break ;;
-            2) tests=(2); break ;;
-            3) tests=(3); break ;;
-            4) tests=(4); break ;;
-            5) tests=(5); break ;;
-            p|P) show_settings_menu ;;
-            q|Q) echo "Annulé."; exit 0 ;;
-            *) echo "Choix invalide." && sleep 1 ;;
-        esac
-    done
+    clear
+    show_title
+    echo -e "${C_BOLD}Sélectionnez les tests à lancer :${C_RESET}"
+    echo " 1. Message simple (ASCII)"
+    echo " 2. Chaîne vide"
+    echo " 3. Bonus: Emoji / Unicode (UTF-8)"
+    echo " 4. Long message (1000 caractères)"
+    echo " 5. Bonus: Clients multiples"
+    print_separator
+    echo " a - Lancer TOUS les tests ${C_DIM}(mode compact)${C_RESET}"
+    echo " p - Paramètres"
+    echo " u - Désinstaller le testeur"
+    echo " q - Quitter"
+    echo -n "> "
+    read -r choice
+    case "$choice" in
+        a|A) tests=(1 2 3 4 5) ;;
+        1) tests=(1) ;;
+        2) tests=(2) ;;
+        3) tests=(3) ;;
+        4) tests=(4) ;;
+        5) tests=(5) ;;
+        p|P) show_settings_menu; show_menu ;;
+        u|U) uninstall; show_menu ;;
+        q|Q) cleanup; exit 0 ;;
+        *) echo "Choix invalide." && sleep 1 && show_menu ;;
+    esac
 }
 
-# === Démarrage du serveur ===
 start_server() {
+    print_separator
     echo -e "$INFO Lancement du serveur..."
     if [ ! -f "$SERVER" ] || [ ! -x "$SERVER" ]; then
-        echo -e "$FAIL L'exécutable du serveur '$SERVER' est introuvable. Compilez votre projet ou activez la compilation auto."
+        echo -e "$FAIL Exécutable '$SERVER' introuvable. Activez la compilation auto ou compilez manuellement."
         exit 1
     fi
-    >"$SERVER_LOG"
+
     $SERVER > "$SERVER_LOG" 2>&1 &
-    SERVER_PID=$!
     sleep 0.5
 
-    local detected_pid=$(grep -o '[0-9]\+' "$SERVER_LOG" | head -n1)
-    if [[ -z "$detected_pid" ]]; then
-        echo -e "$FAIL PID du serveur non détecté dans $SERVER_LOG. Le serveur a-t-il pu démarrer ?"
-        echo -e "$INFO Contenu du log du serveur :"
-        cat "$SERVER_LOG"
+    local pid_line=$(head -n 1 "$SERVER_LOG")
+    SERVER_PID=$(echo "$pid_line" | grep -oE '[0-9]+' | head -n 1)
+
+    if [[ -z "$SERVER_PID" ]]; then
+        echo -e "$FAIL PID du serveur non détecté !"
+        echo -e "$INFO Le serveur doit afficher son PID comme première information."
+        echo -e "${C_DIM}--- Log du serveur ($SERVER_LOG) ---${C_RESET}\n$(cat "$SERVER_LOG")"
         exit 1
     fi
-    SERVER_PID=$detected_pid
-    echo -e "$SUCCESS Serveur prêt. PID : ${C_BOLD}$SERVER_PID${C_RESET}"
+    echo -e "$SUCCESS Serveur prêt. ${C_BOLD}PID : $SERVER_PID${C_RESET}"
 }
 
-# === Moteur de test (AMÉLIORÉ) ===
 run_test() {
     local title="$1"
     local message_sent="$2"
-    local expected_output
-    expected_output=$(printf "%s\n" "$message_sent")
+    local expected_output=$(printf "%s" "$message_sent")
 
-    echo -e "\n--- $title ---"
+    if [ "$COMPACT_MODE" = true ]; then
+        printf "  - %-45s" "$title"
+    else
+        print_separator
+        echo -e "${C_BOLD}LANCEMENT TEST : $title${C_RESET}"
+    fi
+
     >"$SERVER_LOG"
 
-    if [ ! -f "$CLIENT" ] || [ ! -x "$CLIENT" ]; then
-        echo -e "$FAIL L'exécutable du client '$CLIENT' est introuvable. Compilez votre projet ou activez la compilation auto."
-        ((tests_failed++))
-        return
+    if [ "$COMPACT_MODE" = false ]; then
+        printf "   (i) Message envoyé : [%s]\n" "$message_sent"
     fi
 
-    timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$message_sent"
+    timeout "$CLIENT_TIMEOUT" "$CLIENT" "$SERVER_PID" "$message_sent" >/dev/null 2>&1
     local client_exit_code=$?
 
-    if [ $client_exit_code -eq 124 ]; then
-        echo -e "$FAIL Le client a dépassé le temps imparti de ${CLIENT_TIMEOUT}s. Le serveur est-il bloqué ou, si le bonus ACK est implémenté, ne le renvoie-t-il pas ?"
-        ((tests_failed++))
-        return
-    elif [ $client_exit_code -ne 0 ]; then
-        echo -e "$FAIL Le client a retourné une erreur (code: $client_exit_code)."
+    if [ $client_exit_code -ne 0 ]; then
+        if [ "$COMPACT_MODE" = true ]; then
+            echo -e "${C_RED}[✗ CLIENT]${C_RESET}"
+        else
+            local reason="Code d'erreur non nul : $client_exit_code."
+            if [ $client_exit_code -eq 124 ]; then
+                reason="Timeout (${CLIENT_TIMEOUT}s). Serveur bloqué ou pas d'ACK (bonus) ?"
+            fi
+            echo -e "$FAIL Échec du client. Raison : $reason"
+        fi
         ((tests_failed++))
         return
     fi
 
-    sleep 0.2
-    local message_received
-    message_received=$(tr -d '\0' < "$SERVER_LOG")
-    
-    if [ "$DEBUG_MODE" = true ]; then
-        echo -e "$DEBUG Contenu brut du log serveur :"
-        cat -e "$SERVER_LOG" # Affiche les caractères non imprimables
-        echo -e "$DEBUG Fin du contenu brut."
+    sleep 0.3
+
+    local message_received=$(tr -d '\0' < "$SERVER_LOG")
+
+    if [ "$COMPACT_MODE" = false ]; then
+        printf "   (i) Message reçu   : [%s]\n" "$message_received"
+        if [ "$DEBUG_MODE" = true ]; then
+            echo -e "$DEBUG_PREFIX Contenu brut du log serveur :"
+            cat -A "$SERVER_LOG"; echo
+        fi
     fi
 
-    echo -e "📤 ${C_YELLOW}Envoyé  :${C_RESET} '$message_sent'"
-    echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$(echo -n "$message_received" | sed 's/$/↵/' | tr -d '\n')'"
-
-    local final_check_result=1 # 0 pour succès, 1 pour échec
+    local final_check_result=1
     if [ "$LENIENT_MODE" = true ]; then
-        echo -e "$INFO Mode de comparaison indulgent activé. Les différences d'espacement sont ignorées."
-        local sanitized_received=$(echo -n "$message_received" | tr -s '[:space:]' ' ' | xargs)
-        local sanitized_expected=$(echo -n "$expected_output" | tr -s '[:space:]' ' ' | xargs)
-        if [[ "$sanitized_received" == "$sanitized_expected" ]]; then
+        if [[ "$(echo -n "$message_received" | tr -s '[:space:]' ' ' | xargs)" == "$(echo -n "$expected_output" | tr -s '[:space:]' ' ' | xargs)" ]]; then
             final_check_result=0
         fi
-    else
-        # Comparaison stricte par défaut
-        if [[ "$message_received" == "$expected_output" ]]; then
-            final_check_result=0
-        fi
+    elif [[ "$message_received" == "$expected_output" ]]; then
+        final_check_result=0
     fi
 
     if [ $final_check_result -eq 0 ]; then
-        echo -e "$SUCCESS Le message a été correctement reçu."
+        if [ "$COMPACT_MODE" = true ]; then echo -e "${C_GREEN} [✓]${C_RESET}"; else echo -e "$SUCCESS Le message a été correctement reçu."; fi
         ((tests_passed++))
     else
-        echo -e "$FAIL Message reçu incorrect ou incomplet."
-        if [ "$SHOW_DIFF_ON_FAIL" = true ]; then
-            echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
-            diff --color=always <(echo -n "$expected_output") <(echo -n "$message_received")
-            echo "--------------------"
+        if [ "$COMPACT_MODE" = true ]; then
+            echo -e "${C_RED}[✗ MSG]${C_RESET}"
+        else
+            echo -e "$FAIL Le message reçu ne correspond pas au message envoyé."
+            if [ "$SHOW_DIFF_ON_FAIL" = true ]; then
+                echo -e "${C_DIM}--- DIFFÉRENCE ---${C_RESET}"
+                diff --color=always <(printf "%s" "$expected_output") <(printf "%s" "$message_received")
+                echo -e "${C_DIM}------------------${C_RESET}"
+            fi
         fi
         ((tests_failed++))
     fi
 }
 
-# === Test Multi-Clients (AMÉLIORÉ AVEC MODE ACK) ===
 run_multi_client_test() {
-    echo -e "\n--- Test: Clients multiples (en série, aléatoire) ---"
+    local title="Bonus: Clients multiples"
+
+    if [ "$COMPACT_MODE" = true ]; then
+        printf "  - %-45s" "$title"
+    else
+        print_separator
+        echo -e "${C_BOLD}LANCEMENT TEST : $title${C_RESET}"
+    fi
+
     >"$SERVER_LOG"
 
     local msg1=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
@@ -389,66 +348,44 @@ run_multi_client_test() {
     while [[ "$msg1" == "$msg2" ]]; do
         msg2=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
     done
-    local msg3=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
-    while [[ "$msg3" == "$msg1" || "$msg3" == "$msg2" ]]; do
-        msg3=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
-    done
-    
-    local expected_output
-    expected_output=$(printf "%s\n%s\n%s\n" "$msg1" "$msg2" "$msg3")
-    
-    local inter_client_sleep=0.5 # Pause par défaut, généreuse pour les projets SANS ACK
-    if [ "$ACK_MODE" = true ]; then
-        inter_client_sleep=0.1 # Pause courte, on se fie au mécanisme d'ACK pour la synchronisation
-        echo -e "$INFO Mode ACK activé. Utilisation de pauses courtes entre les clients."
-    else
-        echo -e "$INFO Mode ACK désactivé. Utilisation de pauses longues entre les clients."
-    fi
 
-    echo -e "$INFO Envoi de 3 messages à la suite..."
-    timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg1" || { echo -e "$FAIL Le client 1 a échoué."; ((tests_failed++)); return; }
+    local expected_output=$(printf "%s\n%s" "$msg1" "$msg2")
+    local inter_client_sleep=0.5
+    if [ "$ACK_MODE" = true ]; then inter_client_sleep=0.1; fi
+
+    if [ "$COMPACT_MODE" = false ]; then
+        echo -e "${C_DIM}Envoi de 2 messages à la suite...${C_RESET}"
+        printf "   (i) Message 1 : [%s]\n" "$msg1"
+    fi
+    timeout "$CLIENT_TIMEOUT" "$CLIENT" "$SERVER_PID" "$msg1" >/dev/null 2>&1 || { if [ "$COMPACT_MODE" = true ]; then echo -e "${C_RED}[✗ CLIENT 1]${C_RESET}"; else echo -e "$FAIL Client 1 KO."; fi; ((tests_failed++)); return; }
+
     sleep "$inter_client_sleep"
-    timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg2" || { echo -e "$FAIL Le client 2 a échoué."; ((tests_failed++)); return; }
-    sleep "$inter_client_sleep"
-    timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg3" || { echo -e "$FAIL Le client 3 a échoué."; ((tests_failed++)); return; }
+
+    if [ "$COMPACT_MODE" = false ]; then
+        printf "   (i) Message 2 : [%s]\n" "$msg2"
+    fi
+    timeout "$CLIENT_TIMEOUT" "$CLIENT" "$SERVER_PID" "$msg2" >/dev/null 2>&1 || { if [ "$COMPACT_MODE" = true ]; then echo -e "${C_RED}[✗ CLIENT 2]${C_RESET}"; else echo -e "$FAIL Client 2 KO."; fi; ((tests_failed++)); return; }
     sleep 0.5
 
-    local received_output
-    received_output=$(tr -d '\0' < "$SERVER_LOG")
-    
-    if [ "$DEBUG_MODE" = true ]; then
-        echo -e "$DEBUG Contenu brut du log serveur :"
-        cat -e "$SERVER_LOG" # Affiche les caractères non imprimables
-        echo -e "$DEBUG Fin du contenu brut."
-    fi
-    
-    echo -e "📤 ${C_YELLOW}Attendu :${C_RESET} '$(echo -n "$expected_output" | sed 's/$/↵/' | tr -d '\n')'"
-    echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$(echo -n "$received_output" | sed 's/$/↵/' | tr -d '\n')'"
+    local received_output=$(tr -d '\0' < "$SERVER_LOG")
 
-    local final_check_result=1 # 0 pour succès, 1 pour échec
-    if [ "$LENIENT_MODE" = true ]; then
-        echo -e "$INFO Mode de comparaison indulgent activé. Les différences d'espacement sont ignorées."
-        local sanitized_received=$(echo -n "$received_output" | tr -s '[:space:]' ' ' | xargs)
-        local sanitized_expected=$(echo -n "$expected_output" | tr -s '[:space:]' ' ' | xargs)
-        if [[ "$sanitized_received" == "$sanitized_expected" ]]; then
-            final_check_result=0
-        fi
-    else
-        # Comparaison stricte par défaut
-        if [[ "$received_output" == "$expected_output" ]]; then
-            final_check_result=0
-        fi
+    if [ "$COMPACT_MODE" = false ]; then
+        printf "\n   (i) Attendu total : [%s]\n" "$(echo -n "$expected_output" | sed 's/\n/\\n/g')"
+        printf "   (i) Reçu total    : [%s]\n" "$(echo -n "$received_output" | sed 's/\n/\\n/g')"
     fi
 
-    if [ $final_check_result -eq 0 ]; then
-        echo -e "$SUCCESS Tous les messages des clients ont été reçus dans le bon ordre."
+    if [[ "$received_output" == "$expected_output" ]]; then
+        if [ "$COMPACT_MODE" = true ]; then echo -e "${C_GREEN}[✓]${C_RESET}"; else echo -e "$SUCCESS Les messages ont été reçus correctement et dans le bon ordre."; fi
         ((tests_passed++))
     else
-        echo -e "$FAIL Un ou plusieurs messages sont manquants ou corrompus."
-        if [ "$SHOW_DIFF_ON_FAIL" = true ]; then
-            echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
-            diff --color=always <(echo -n "$expected_output") <(echo -n "$message_received")
-            echo "--------------------"
+        if [ "$COMPACT_MODE" = true ]; then
+            echo -e "${C_RED}[✗ MSG]${C_RESET}"
+        else
+            echo -e "$FAIL L'enchaînement des messages est incorrect."
+            echo -e "$WARN Le serveur doit afficher chaque message sur une nouvelle ligne."
+            if [ "$SHOW_DIFF_ON_FAIL" = true ]; then
+                diff --color=always <(printf "%s" "$expected_output") <(printf "%s" "$received_output")
+            fi
         fi
         ((tests_failed++))
     fi
@@ -456,52 +393,59 @@ run_multi_client_test() {
 
 # ==================== Exécution Principale ====================
 
-clear # Nettoie le terminal au lancement
-load_settings # Charge les paramètres au début
-
-if [ "$1" == "uninstall" ]; then
-    uninstall
-fi
-
 trap cleanup EXIT
+clear
+load_settings
 
 if [ "$AUTO_COMPILE" = true ]; then
     compile_project
 else
-    fancy_title
-    echo -e "$INFO Compilation automatique désactivée. Assurez-vous que le projet est compilé."
+    show_title
+    echo -e "$INFO Compilation auto désactivée. Assurez-vous que le projet est à jour."
 fi
 
-show_menu
 start_server
 
-for test in "${tests[@]}"; do
-    case $test in
-        1) 
-            msg=${SIMPLE_MSGS[$RANDOM % ${#SIMPLE_MSGS[@]}]}
-            run_test "Message simple (aléatoire)" "$msg"
-            ;;
-        2) run_test "Chaîne vide" "" ;;
-        3) 
-            msg=${UNICODE_MSGS[$RANDOM % ${#UNICODE_MSGS[@]}]}
-            run_test "Bonus: Emoji / UTF-8 (aléatoire)" "$msg"
-            ;;
-        4) 
-            msg=$(head -c 1000 /dev/urandom | base64 | tr -d '\n' | head -c 1000)
-            run_test "Message long et complexe (1000)" "$msg"
-            ;;
-        5) run_multi_client_test ;;
-    esac
+# Boucle principale du testeur
+while true; do
+    tests_passed=0
+    tests_failed=0
+    tests=()
+    choice=""
+
+    show_menu
+
+    COMPACT_MODE=false
+    if [[ "$choice" == "a" || "$choice" == "A" ]]; then
+        COMPACT_MODE=true
+    fi
+
+    clear
+    if [ "$COMPACT_MODE" = true ]; then
+        echo -e "${C_BOLD}Rapport des tests :${C_RESET}"
+    fi
+
+    for test_id in "${tests[@]}"; do
+        case $test_id in
+            1) msg=${SIMPLE_MSGS[$RANDOM % ${#SIMPLE_MSGS[@]}]}; run_test "Message simple (aléatoire)" "$msg" ;;
+            2) run_test "Chaîne vide" "" ;;
+            3) msg=${UNICODE_MSGS[$RANDOM % ${#UNICODE_MSGS[@]}]}; run_test "Bonus: Emoji / UTF-8 (aléatoire)" "$msg" ;;
+            4) msg=$(head -c 1000 /dev/urandom | base64 | tr -d '\n' | head -c 1000); run_test "Message long (1000)" "$msg" ;;
+            5) run_multi_client_test ;;
+        esac
+    done
+
+    print_separator
+    echo -e "\n${C_BOLD}RÉSUMÉ DE LA SESSION${C_RESET}"
+    echo -e "  ${C_GREEN}Tests réussis : $tests_passed${C_RESET}"
+    echo -e "  ${C_RED}Tests échoués : $tests_failed${C_RESET}"
+
+    if [ "$tests_failed" -eq 0 ] && [ ${#tests[@]} -gt 0 ]; then
+        echo -e "\n${C_GREEN}${C_BOLD}🎉 Tous les tests de cette session ont réussi !${C_RESET}"
+    elif [ ${#tests[@]} -gt 0 ]; then
+        echo -e "\n${C_RED}${C_BOLD}⚠️  Des erreurs ont été détectées.${C_RESET}"
+    fi
+
+    echo
+    read -n1 -s -r -p "Appuyez sur une touche pour retourner au menu..."
 done
-
-clear # Nettoie avant d'afficher le résumé
-# === Résumé Final ===
-echo -e "\n${C_BOLD}RÉSULTAT FINAL${C_RESET}"
-echo -e "✅ Réussis : ${C_GREEN}$tests_passed${C_RESET}"
-echo -e "❌ Échoués : ${C_RED}$tests_failed${C_RESET}"
-
-if [ "$tests_failed" -eq 0 ]; then
-    echo -e "\n${C_GREEN}🎉 Tout est bon, Minitalk est conforme !${C_RESET}"
-else
-    echo -e "\n${C_RED}⚠️  Des erreurs sont présentes. Consulte les logs ci-dessus.${C_RESET}"
-fi
