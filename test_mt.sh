@@ -32,7 +32,7 @@ SERVER_PID="" # Initialisation à vide est cruciale
 
 # ==================== Fonctions Principales ====================
 
-# === Dégradé propre : couleur entière par ligne (INCHANGÉ) ===
+# === Dégradé propre : couleur entière par ligne ===
 gradient_line() {
     local text="$1"
     local r=$((RANDOM % 156 + 100))
@@ -41,7 +41,7 @@ gradient_line() {
     echo -e "\033[38;2;${r};${g};${b}m${text}\033[0m"
 }
 
-# === ASCII art stylisé pour le titre du testeur (INCHANGÉ) ===
+# === ASCII art stylisé pour le titre du testeur ===
 fancy_title() {
     echo
     gradient_line "  _______ __  __ _______ "
@@ -53,7 +53,30 @@ fancy_title() {
     echo
 }
 
-# === Nettoyage (CORRIGÉ) ===
+# === Compilation du projet (NOUVEAU) ===
+compile_project() {
+    echo -e "$INFO Vérification des fichiers sources et du Makefile..."
+    if [ ! -f "server.c" ] || [ ! -f "client.c" ]; then
+        echo -e "$FAIL 'server.c' ou 'client.c' est introuvable."
+        echo -e "$INFO Assurez-vous que le testeur est dans le bon répertoire."
+        exit 1
+    fi
+    if [ ! -f "Makefile" ] && [ ! -f "makefile" ]; then
+        echo -e "$FAIL Aucun Makefile trouvé. Impossible de compiler le projet."
+        exit 1
+    fi
+    echo -e "$SUCCESS Fichiers sources et Makefile trouvés."
+
+    echo -e "$INFO Lancement de 'make' pour compiler le projet..."
+    if ! make; then
+        echo -e "$FAIL La compilation a échoué. Veuillez corriger les erreurs."
+        exit 1
+    fi
+    echo -e "$SUCCESS Compilation terminée."
+}
+
+
+# === Nettoyage ===
 cleanup() {
     echo -e "\n$INFO Nettoyage..."
     # On ne tente de tuer le processus QUE si la variable SERVER_PID n'est pas vide
@@ -64,11 +87,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# === Démarrage du serveur (Amélioré) ===
+# === Démarrage du serveur ===
 start_server() {
     echo -e "$INFO Lancement du serveur..."
     if [ ! -f "$SERVER" ] || [ ! -x "$SERVER" ]; then
-        echo -e "$FAIL L'exécutable du serveur '$SERVER' est introuvable."
+        echo -e "$FAIL L'exécutable du serveur '$SERVER' est introuvable. Problème de compilation ?"
         exit 1
     fi
     >"$SERVER_LOG"
@@ -87,7 +110,7 @@ start_server() {
     echo -e "$SUCCESS Serveur prêt. PID : ${C_BOLD}$SERVER_PID${C_RESET}"
 }
 
-# === Moteur de test (AMÉLIORÉ avec timeout et diff) ===
+# === Moteur de test ===
 run_test() {
     local title="$1"
     local message_sent="$2"
@@ -95,7 +118,7 @@ run_test() {
     >"$SERVER_LOG"
 
     if [ ! -f "$CLIENT" ] || [ ! -x "$CLIENT" ]; then
-        echo -e "$FAIL L'exécutable du client '$CLIENT' est introuvable."
+        echo -e "$FAIL L'exécutable du client '$CLIENT' est introuvable. Problème de compilation ?"
         ((tests_failed++))
         return
     fi
@@ -132,7 +155,7 @@ run_test() {
     fi
 }
 
-# === Test Multi-Clients (CORRIGÉ pour les retours à la ligne) ===
+# === Test Multi-Clients ===
 run_multi_client_test() {
     echo -e "\n--- Test: Clients multiples (en série) ---"
     >"$SERVER_LOG"
@@ -168,7 +191,7 @@ run_multi_client_test() {
     fi
 }
 
-# === Menu (Modifié) ===
+# === Menu ===
 show_menu() {
     echo -e "${C_BOLD}Sélectionne les tests à lancer :${C_RESET}"
     echo " 1 - Message simple"
@@ -186,7 +209,7 @@ show_menu() {
         3) tests=(3) ;;
         4) tests=(4) ;;
         5) tests=(5) ;;
-        0) tests=(1 2 3 4 5) ;; # Option 6 retirée
+        0) tests=(1 2 3 4 5) ;;
         q|Q) echo "Annulé."; exit 0 ;;
         *) echo "Choix invalide."; show_menu ;;
     esac
@@ -194,6 +217,7 @@ show_menu() {
 
 # ==================== Exécution Principale ====================
 fancy_title
+compile_project # <-- Vérification et compilation ici
 show_menu
 start_server
 
@@ -207,11 +231,10 @@ for test in "${tests[@]}"; do
             run_test "Message long et complexe (1000)" "$msg"
             ;;
         5) run_multi_client_test ;;
-        # Cas 6 retiré
     esac
 done
 
-# === Résumé Final (INCHANGÉ) ===
+# === Résumé Final ===
 echo -e "\n${C_BOLD}RÉSULTAT FINAL${C_RESET}"
 echo -e "✅ Réussis : ${C_GREEN}$tests_passed${C_RESET}"
 echo -e "❌ Échoués : ${C_RED}$tests_failed${C_RESET}"
