@@ -45,6 +45,7 @@ Nom du script : `test_mt.sh`
 ├── libft_utils.c
 ├── Makefile (optionnel)
 ├── test_mt.sh
+├── .tester_settings
 └── README_TEST.md
 ```
 
