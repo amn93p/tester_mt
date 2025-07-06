@@ -31,8 +31,10 @@ if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
         echo "🛠️  Ajout de $INSTALL_DIR au PATH dans $SHELL_RC"
     fi
 
-    echo "🔁 Recharge ton terminal ou exécute :"
-    echo "    source $SHELL_RC"
+    echo "🔁 Recharge du fichier de configuration..."
+    source "$SHELL_RC"
+
+    echo "✅ PATH mis à jour pour cette session."
 else
     echo "🚀 Tu peux maintenant utiliser : tester_mt"
 fi
