@@ -26,6 +26,10 @@ FAIL="${C_RED}${C_BOLD}[ÉCHEC]${C_RESET}"
 INFO="${C_BLUE}${C_BOLD}[INFO]${C_RESET}"
 WARN="${C_YELLOW}${C_BOLD}[ATTENTION]${C_RESET}"
 
+# === Paramètres configurables (NOUVEAU) ===
+CLEAN_ON_EXIT=true
+AUTO_COMPILE=true
+SHOW_DIFF_ON_FAIL=true
 
 # --- Compteurs ---
 tests_passed=0
@@ -69,34 +73,43 @@ compile_project() {
     fi
     echo -e "$SUCCESS Fichiers sources et Makefile trouvés."
 
-    echo -e "$INFO Lancement de 'make' pour compiler le projet..."
-    if ! make; then
+    echo -e "$INFO Lancement de la compilation si nécessaire..."
+    local make_output
+    make_output=$(make 2>&1)
+    local make_exit_code=$?
+
+    if [ $make_exit_code -ne 0 ]; then
         echo -e "$FAIL La compilation a échoué. Veuillez corriger les erreurs."
+        echo -e "--- Sortie de Make ---"
+        echo "$make_output"
+        echo "----------------------"
         exit 1
     fi
-    echo -e "$SUCCESS Compilation terminée."
+
+    if [[ "$make_output" == *"Nothing to be done"* ]]; then
+        echo -e "$INFO Le projet est déjà à jour."
+    else
+        echo -e "$SUCCESS Compilation terminée."
+    fi
 }
 
-# === Nettoyage (AMÉLIORÉ avec make fclean) ===
+# === Nettoyage (respecte maintenant les paramètres) ===
 cleanup() {
     echo -e "\n$INFO Nettoyage..."
-    # Arrêt du processus serveur
     if [[ -n "$SERVER_PID" ]] && ps -p "$SERVER_PID" > /dev/null; then
        kill "$SERVER_PID" 2>/dev/null
     fi
-    # Suppression du log
     rm -f "$SERVER_LOG"
 
-    # Nettoyage des fichiers compilés
-    if [ -f "Makefile" ] || [ -f "makefile" ]; then
-        echo -e "$INFO Exécution de 'make fclean' pour nettoyer le projet..."
-        # Redirection de la sortie pour ne pas polluer l'affichage
-        make fclean > /dev/null 2>&1
+    if [ "$CLEAN_ON_EXIT" = true ]; then
+        if [ -f "Makefile" ] || [ -f "makefile" ]; then
+            echo -e "$INFO Exécution de 'make fclean' pour nettoyer le projet..."
+            make fclean > /dev/null 2>&1
+        fi
     fi
 }
-# Le trap est défini plus tard pour ne pas interférer avec l'uninstall
 
-# === Fonction de désinstallation (AMÉLIORÉ) ===
+# === Fonction de désinstallation ===
 uninstall() {
     echo -e "$WARN Cette action va nettoyer le projet (make fclean) et ${C_BOLD}supprimer ce script (${0})${C_RESET}."
     read -p "Êtes-vous sûr de vouloir continuer? (y/n) " -n 1 -r
@@ -113,7 +126,6 @@ uninstall() {
         echo -e "$INFO Auto-destruction du script..."
         if rm -- "$0"; then
             echo -e "$SUCCESS Script '$0' supprimé."
-            # On désactive le trap pour éviter qu'il ne s'exécute après la suppression
             trap - EXIT
             exit 0
         else
@@ -124,6 +136,68 @@ uninstall() {
         echo -e "$INFO Désinstallation annulée."
         exit 0
     fi
+}
+
+# === Affichage d'un paramètre (NOUVEAU) ===
+print_setting_status() {
+    if [ "$1" = true ]; then
+        echo -e "${C_GREEN}Activé${C_RESET}"
+    else
+        echo -e "${C_RED}Désactivé${C_RESET}"
+    fi
+}
+
+# === Menu des paramètres (NOUVEAU) ===
+show_settings_menu() {
+    while true; do
+        clear
+        fancy_title
+        echo -e "${C_BOLD}--- Paramètres ---${C_RESET}"
+        echo " 1. Nettoyer le projet en quittant (`fclean`) : $(print_setting_status $CLEAN_ON_EXIT)"
+        echo " 2. Compiler automatiquement au lancement      : $(print_setting_status $AUTO_COMPILE)"
+        echo " 3. Afficher le 'diff' en cas d'échec        : $(print_setting_status $SHOW_DIFF_ON_FAIL)"
+        echo ""
+        echo " r - Retour au menu principal"
+        echo -n "> "
+        read -r choice
+        case "$choice" in
+            1) CLEAN_ON_EXIT=$(! $CLEAN_ON_EXIT) ;;
+            2) AUTO_COMPILE=$(! $AUTO_COMPILE) ;;
+            3) SHOW_DIFF_ON_FAIL=$(! $SHOW_DIFF_ON_FAIL) ;;
+            r|R) break ;;
+            *) echo "Choix invalide." && sleep 1 ;;
+        esac
+    done
+}
+
+# === Menu principal (mis à jour) ===
+show_menu() {
+    while true; do
+        clear
+        fancy_title
+        echo -e "${C_BOLD}Sélectionne les tests à lancer :${C_RESET}"
+        echo " 1 - Message simple"
+        echo " 2 - Chaîne vide"
+        echo " 3 - Emoji / Unicode"
+        echo " 4 - Long message (1000)"
+        echo " 5 - Clients multiples"
+        echo " 0 - Tous les tests"
+        echo " s - Paramètres"
+        echo " q - Quitter"
+        echo -n "> "
+        read -r choice
+        case "$choice" in
+            1) tests=(1); break ;;
+            2) tests=(2); break ;;
+            3) tests=(3); break ;;
+            4) tests=(4); break ;;
+            5) tests=(5); break ;;
+            0) tests=(1 2 3 4 5); break ;;
+            s|S) show_settings_menu ;;
+            q|Q) echo "Annulé."; exit 0 ;;
+            *) echo "Choix invalide." && sleep 1 ;;
+        esac
+    done
 }
 
 # === Démarrage du serveur ===
@@ -149,7 +223,7 @@ start_server() {
     echo -e "$SUCCESS Serveur prêt. PID : ${C_BOLD}$SERVER_PID${C_RESET}"
 }
 
-# === Moteur de test ===
+# === Moteur de test (respecte maintenant les paramètres) ===
 run_test() {
     local title="$1"
     local message_sent="$2"
@@ -176,9 +250,7 @@ run_test() {
     fi
 
     sleep 0.2
-
     local message_received=$(tr -d '\0' < "$SERVER_LOG")
-
     echo -e "📤 ${C_YELLOW}Envoyé  :${C_RESET} '$message_sent'"
     echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$message_received'"
 
@@ -187,14 +259,16 @@ run_test() {
         ((tests_passed++))
     else
         echo -e "$FAIL Message reçu incorrect ou incomplet."
-        echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
-        diff --color=always <(echo -n "$message_sent") <(echo -n "$message_received")
-        echo "--------------------"
+        if [ "$SHOW_DIFF_ON_FAIL" = true ]; then
+            echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
+            diff --color=always <(echo -n "$message_sent") <(echo -n "$message_received")
+            echo "--------------------"
+        fi
         ((tests_failed++))
     fi
 }
 
-# === Test Multi-Clients ===
+# === Test Multi-Clients (respecte maintenant les paramètres) ===
 run_multi_client_test() {
     echo -e "\n--- Test: Clients multiples (en série) ---"
     >"$SERVER_LOG"
@@ -202,23 +276,18 @@ run_multi_client_test() {
     local msg1="Premier message."
     local msg2="Deuxième test."
     local msg3="Troisième envoi."
-    
     local expected_output
     expected_output=$(printf "%s\n%s\n%s" "$msg1" "$msg2" "$msg3")
 
     echo -e "$INFO Envoi de 3 messages à la suite, avec une pause entre chaque..."
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg1" || { echo -e "$FAIL Le client 1 a échoué."; ((tests_failed++)); return; }
-    sleep 0.2 # Laisse le temps au serveur de traiter et potentiellement répondre (ACK)
-
+    sleep 0.2
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg2" || { echo -e "$FAIL Le client 2 a échoué."; ((tests_failed++)); return; }
-    sleep 0.2 # Laisse le temps au serveur de traiter et potentiellement répondre (ACK)
-
+    sleep 0.2
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg3" || { echo -e "$FAIL Le client 3 a échoué."; ((tests_failed++)); return; }
-    
-    sleep 0.5 # Attendre que le serveur finisse d'écrire le dernier message
+    sleep 0.5
 
     local received_output=$(tr -d '\0' < "$SERVER_LOG")
-    
     echo -e "📤 ${C_YELLOW}Attendu :${C_RESET} '$(echo "$expected_output" | sed 's/$/↵/' | tr -d '\n')'"
     echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$(echo "$received_output" | sed 's/$/↵/' | tr -d '\n')'"
 
@@ -227,49 +296,31 @@ run_multi_client_test() {
         ((tests_passed++))
     else
         echo -e "$FAIL Un ou plusieurs messages sont manquants ou corrompus."
-        echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
-        diff --color=always <(echo -n "$expected_output") <(echo -n "$received_output")
-        echo "--------------------"
+        if [ "$SHOW_DIFF_ON_FAIL" = true ]; then
+            echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
+            diff --color=always <(echo -n "$expected_output") <(echo -n "$received_output")
+            echo "--------------------"
+        fi
         ((tests_failed++))
     fi
 }
 
-# === Menu ===
-show_menu() {
-    echo -e "${C_BOLD}Sélectionne les tests à lancer :${C_RESET}"
-    echo " 1 - Message simple"
-    echo " 2 - Chaîne vide"
-    echo " 3 - Emoji / Unicode"
-    echo " 4 - Long message (1000)"
-    echo " 5 - Clients multiples"
-    echo " 0 - Tous les tests"
-    echo " q - Quitter"
-    echo -n "> "
-    read -r choice
-    case "$choice" in
-        1) tests=(1) ;;
-        2) tests=(2) ;;
-        3) tests=(3) ;;
-        4) tests=(4) ;;
-        5) tests=(5) ;;
-        0) tests=(1 2 3 4 5) ;;
-        q|Q) echo "Annulé."; exit 0 ;;
-        *) echo "Choix invalide."; show_menu ;;
-    esac
-}
-
 # ==================== Exécution Principale ====================
 
-# Gérer les arguments de la ligne de commande (NOUVEAU)
 if [ "$1" == "uninstall" ]; then
     uninstall
 fi
 
-# Le trap est activé seulement si on ne désinstalle pas
 trap cleanup EXIT
 
-fancy_title
-compile_project # <-- Vérification et compilation ici
+if [ "$AUTO_COMPILE" = true ]; then
+    compile_project
+else
+    # On affiche le titre seulement si on ne compile pas, sinon il s'affiche déjà
+    fancy_title
+    echo -e "$INFO Compilation automatique désactivée. Assurez-vous que le projet est compilé."
+fi
+
 show_menu
 start_server
 
@@ -277,7 +328,7 @@ for test in "${tests[@]}"; do
     case $test in
         1) run_test "Message simple" "Hello 42!" ;;
         2) run_test "Chaîne vide" "" ;;
-        3) run_test "Emoji / UTF-8" "🐍�🔥 çøøl 漢字" ;;
+        3) run_test "Emoji / UTF-8" "🐍😎🔥 çøøl 漢字" ;;
         4) 
             msg=$(head -c 1000 /dev/urandom | base64 | tr -d '\n' | head -c 1000)
             run_test "Message long et complexe (1000)" "$msg"
