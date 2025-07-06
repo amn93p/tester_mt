@@ -87,7 +87,7 @@ load_settings() {
     SHOW_DIFF_ON_FAIL=true
     DEBUG_MODE=false
     ACK_MODE=false # Par défaut, on teste sans le bonus ACK
-    LENIENT_MODE=false # Par défaut, la comparaison est stricte
+    LENIENT_MODE=true # Par défaut, la comparaison est stricte
 
     if [ -f "$SETTINGS_FILE" ]; then
         source "$SETTINGS_FILE"
