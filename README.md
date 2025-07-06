@@ -87,7 +87,6 @@ bash test_mt.sh
 ├── server.c
 ├── client.c
 ├── Makefile (optionnel)
-├── tmt.py (ou test_mt.sh)
 └── autres fichiers...
 ```
 
