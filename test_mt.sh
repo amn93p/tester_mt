@@ -6,9 +6,9 @@ set +H # Désactive l'expansion de l'historique (!)
 # ║     Parfait pour le sujet 42 + bonus Unicode & ACK               ║
 # ╚════════════════════════════════════════════════════════════════════╝
 
-# === Configuration ===
 if [[ "$1" == "uninstall" ]]; then
-    bash "$(dirname "$0")/uninstall.sh"
+    echo "🧹 Désinstallation de tester_mt..."
+    rm -- "$0" && echo "✅ Supprimé : $0" || echo "❌ Échec de la suppression"
     exit 0
 fi
 
