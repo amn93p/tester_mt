@@ -30,13 +30,13 @@ Nom du script : `test_mt.sh`
 2. Donne les droits d’exécution au script :
 
 ```bash
-chmod +x test_minitalk_bonus.sh
+chmod +x test_mt.sh
 ```
 
 3. Lance le script :
 
 ```bash
-./test_minitalk_bonus.sh
+./test_mt.sh
 ```
 
 ---
