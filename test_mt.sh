@@ -80,9 +80,9 @@ save_settings() {
 
 load_settings() {
     # Valeurs par défaut
-    CLEAN_ON_EXIT=true
+    CLEAN_ON_EXIT=false
     AUTO_COMPILE=true
-    SHOW_DIFF_ON_FAIL=true
+    SHOW_DIFF_ON_FAIL=false
     DEBUG_MODE=false
 
     if [ -f "$SETTINGS_FILE" ]; then
