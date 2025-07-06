@@ -52,7 +52,7 @@ def check_and_build():
             sys.exit(1)
 
 # === OUTILS DE TEST ===
-def log_result(name, passed, duration=None, message_sent="", server_output="", detail="", category="obligatoire"):
+def log_result(name, passed, duration=None, message_sent="", server_output="", detail=""):
     symbol = f"{GREEN}[✓]{RESET}" if passed else f"{RED}[✗]{RESET}"
     dur = f" ({duration:.2f}s)" if duration else ""
     print(f"\n{symbol} {BOLD}{name}{RESET}{dur}")
@@ -60,7 +60,7 @@ def log_result(name, passed, duration=None, message_sent="", server_output="", d
     print(f"    {BOLD}Réponse serveur :{RESET} {server_output}")
     if not passed:
         print(f"    {RED}Détail : {detail}{RESET}")
-    RESULTS.append((name, passed, category))
+    RESULTS.append((name, passed, duration, message_sent, server_output, detail))
 
 def launch_server():
     proc = subprocess.Popen([SERVER_EXEC], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
@@ -90,18 +90,27 @@ def read_output(proc, expected, timeout=TIMEOUT):
 
 def send_message(pid, msg, expect_ack=False):
     start = time.time()
+
     if expect_ack:
-        proc = subprocess.Popen([CLIENT_EXEC, str(pid), msg], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # Rediriger stdout du client
+        proc = subprocess.Popen([CLIENT_EXEC, str(pid), msg],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                text=True)
+
         try:
             output, _ = proc.communicate(timeout=3)
         except subprocess.TimeoutExpired:
             proc.kill()
             return time.time() - start, False
+
         duration = time.time() - start
         ack_found = "[ACK]" in output
         return duration, ack_found
     else:
-        subprocess.run([CLIENT_EXEC, str(pid), msg], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run([CLIENT_EXEC, str(pid), msg],
+                       stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
         duration = time.time() - start
         return duration, None
 
@@ -111,10 +120,10 @@ def test_pid():
         proc, _ = launch_server()
         proc.send_signal(signal.SIGINT)
         proc.wait()
-        log_result("Affichage PID serveur", True, category="obligatoire")
+        log_result("Affichage PID serveur", True)
         return True
     except Exception as e:
-        log_result("Affichage PID serveur", False, detail=str(e), category="obligatoire")
+        log_result("Affichage PID serveur", False, detail=str(e))
         return False
 
 def test_basic_msg():
@@ -125,7 +134,7 @@ def test_basic_msg():
     proc.send_signal(signal.SIGINT)
     proc.wait()
     detail = "" if success else f"Attendu : '{msg}'"
-    log_result("Message simple", success, duration, msg, output, detail, category="obligatoire")
+    log_result("Message simple", success, duration, msg, output, detail)
     return success
 
 def test_multi_msg():
@@ -136,10 +145,10 @@ def test_multi_msg():
         _, _ = send_message(pid, msg)
         ok, out = read_output(proc, msg)
         if not ok:
-            log_result(f"Message multiple '{msg}'", False, message_sent=msg, server_output=out.strip(), detail="Message manquant dans la sortie", category="obligatoire")
+            log_result(f"Message multiple '{msg}'", False, message_sent=msg, server_output=out.strip(), detail="Message manquant dans la sortie")
             all_ok = False
         else:
-            log_result(f"Message multiple '{msg}'", True, message_sent=msg, server_output=out.strip(), category="obligatoire")
+            log_result(f"Message multiple '{msg}'", True, message_sent=msg, server_output=out.strip())
     proc.send_signal(signal.SIGINT)
     proc.wait()
     return all_ok
@@ -152,7 +161,7 @@ def test_perf():
     proc.send_signal(signal.SIGINT)
     proc.wait()
     detail = f"{duration:.2f}s pour 100c"
-    log_result("Performance (<1s pour 100c)", ok and duration < 1.0, duration, msg, output.strip(), detail, category="obligatoire")
+    log_result("Performance (<1s pour 100c)", ok and duration < 1.0, duration, msg, output.strip(), detail)
     return ok
 
 def test_unicode():
@@ -163,7 +172,7 @@ def test_unicode():
     proc.send_signal(signal.SIGINT)
     proc.wait()
     detail = "" if ok else "Encodage incorrect ou message tronqué"
-    log_result("Support Unicode", ok, duration, msg, output.strip(), detail, category="bonus")
+    log_result("Support Unicode", ok, duration, msg, output.strip(), detail)
     return ok
 
 def test_ack():
@@ -174,50 +183,32 @@ def test_ack():
     proc.send_signal(signal.SIGINT)
     proc.wait()
     detail = "" if ack else "Aucun signal SIGUSR1/SIGUSR2 reçu"
-    log_result("Accusé de réception (SIGUSR)", ack, duration, msg, msg, detail, category="bonus")
+    log_result("Accusé de réception (SIGUSR)", ack, duration, msg, msg, detail)
     return ack
 
-# === RÉSUMÉ FINAL ===
-def test_summary():
-    print(f"\n{CYAN}{BOLD}╭──── Résumé des tests ─────╮{RESET}")
-    passed = total = 0
-    obligatory = bonus = passed_ob = passed_bn = 0
-    for name, ok, cat in RESULTS:
-        total += 1
-        passed += ok
-        if cat == "obligatoire":
-            obligatory += 1
-            passed_ob += ok
-        else:
-            bonus += 1
-            passed_bn += ok
-        symbol = f"{GREEN}✓{RESET}" if ok else f"{RED}✗{RESET}"
-        print(f" {symbol} {name}")
-    print(f"{CYAN}╰────────────────────────────╯{RESET}")
+# === MENU ET EXPORT ===
+def print_menu():
+    print(f"\n{BLUE}{BOLD}╭────────────────────────────────────────────╮")
+    print(f"│        TMT - Tester MiniTalk Tool          │")
+    print(f"╰────────────────────────────────────────────╯{RESET}")
+    print(f"{BOLD} 1.{RESET} Test affichage PID")
+    print(f"{BOLD} 2.{RESET} Test message simple")
+    print(f"{BOLD} 3.{RESET} Test messages multiples")
+    print(f"{BOLD} 4.{RESET} Test performance")
+    print(f"{BOLD} 5.{RESET} Test Unicode")
+    print(f"{BOLD} 6.{RESET} Test accusé de réception")
+    print(f"{BOLD} 7.{RESET} Lancer tous les tests")
+    print(f"{BOLD} 8.{RESET} Quitter")
 
-    ob_status = f"{GREEN}VALIDÉ{RESET}" if passed_ob == obligatory else f"{RED}INCOMPLET{RESET}"
-    if bonus == 0:
-        bn_status = "-"
-    elif passed_bn == bonus:
-        bn_status = f"{GREEN}ACQUIS (Bonus complet){RESET}"
-    elif passed_bn > 0:
-        bn_status = f"{YELLOW}PARTIEL (Bonus partiellement validé){RESET}"
-    else:
-        bn_status = f"{RED}NON VALIDÉ (Aucun bonus acquis){RESET}"
+def show_results():
+    print(f"\n{CYAN}{BOLD}╭──── Résumé des tests ─────────╮{RESET}")
+    total = len(RESULTS)
+    passed = sum(1 for _, ok, *_ in RESULTS if ok)
+    for name, ok, *_ in RESULTS:
+        mark = f"{GREEN}✓{RESET}" if ok else f"{RED}✗{RESET}"
+        print(f" {mark} {name}")
+    print(f"{CYAN}╰──── {passed}/{total} test(s) réussi(s) ────╯{RESET}\n")
 
-    if passed_ob == obligatory and passed_bn == bonus:
-        note = f"{GREEN}🎉 Toutes les fonctionnalités sont validées (obligatoire + bonus){RESET}"
-    elif passed_ob == obligatory:
-        note = f"{YELLOW}Partie obligatoire validée, bonus partiel ou manquant{RESET}"
-    else:
-        note = f"{RED}Partie obligatoire incomplète. Corrigez les erreurs bloquantes.{RESET}"
-
-    print(f"\n{BOLD}Résultat global :{RESET}")
-    print(f" Partie obligatoire : {passed_ob}/{obligatory} → {ob_status}")
-    print(f" Bonus : {passed_bn}/{bonus} → {bn_status}")
-    print(f"\n→ {note}\n")
-
-# === MENU ===
 def main():
     check_and_build()
     tests = {
@@ -228,27 +219,22 @@ def main():
         "5": test_unicode,
         "6": test_ack,
     }
+
     while True:
-        print(f"\n{BLUE}{BOLD}╭────────────────────────────────────────────╮")
-        print(f"│        TMT - Tester MiniTalk Tool          │")
-        print(f"╰────────────────────────────────────────────╯{RESET}")
-        for key, func in tests.items():
-            print(f" {BOLD}{key}.{RESET} {func.__name__}")
-        print(f" {BOLD}A.{RESET} Lancer tous les tests")
-        print(f" {BOLD}Q.{RESET} Quitter")
-        choice = input(f"{BOLD}Choix > {RESET}").strip().upper()
-        if choice == "Q":
+        print_menu()
+        choice = input(f"{BOLD}Choix > {RESET}").strip()
+        if choice == "8":
             print(f"{YELLOW}Fermeture du testeur. À bientôt.{RESET}")
             break
-        elif choice == "A":
+        elif choice == "7":
             RESULTS.clear()
             for func in tests.values():
                 func()
-            test_summary()
+            show_results()
         elif choice in tests:
             RESULTS.clear()
             tests[choice]()
-            test_summary()
+            show_results()
         else:
             print(f"{RED}Entrée invalide.{RESET}")
 
