@@ -27,16 +27,14 @@ Nom du script : `test_mt.sh`
 1. Assure-toi d’avoir compilé `server` et `client`  
    (automatiquement fait si `Makefile` présent)
 
-2. Donne les droits d’exécution au script :
+2. Télécharge et utilise l'installateur :
 
-```bash
-chmod +x test_mt.sh
+```curl -sSL https://raw.githubusercontent.com/amn93p/tester_mt/main/installer.sh | bash
 ```
 
 3. Lance le script :
 
-```bash
-./test_mt.sh
+```test_mt.sh
 ```
 
 ---
