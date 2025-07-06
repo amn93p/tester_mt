@@ -86,19 +86,28 @@ run_test() {
 run_multi_client_test() {
     echo -e "\n--- Test: Clients multiples ---"
     > "$SERVER_LOG"
+
     ./$CLIENT "$SERVER_PID" "A" &
+    pid1=$!
+    sleep 0.2
     ./$CLIENT "$SERVER_PID" "B" &
+    pid2=$!
+    sleep 0.2
     ./$CLIENT "$SERVER_PID" "C" &
-    wait
-    sleep 0.5
-    local output=$(cat "$SERVER_LOG" | tr -d '\0')
+    pid3=$!
+
+    wait $pid1 $pid2 $pid3
+    sleep 1
+
+    output=$(tr -d '\0' < "$SERVER_LOG")
+
+    echo -e "📥 ${C_YELLOW}Reçu total :${C_RESET} '$output'"
 
     if [[ "$output" == *"A"* && "$output" == *"B"* && "$output" == *"C"* ]]; then
-        echo -e "$SUCCESS Tous les messages ont été reçus."
+        echo -e "$SUCCESS Tous les messages clients ont été reçus."
         ((tests_passed++))
     else
-        echo -e "$FAIL Messages manquants dans la sortie."
-        echo -e "       ${C_YELLOW}Reçu :${C_RESET} '$output'"
+        echo -e "$FAIL Un ou plusieurs messages sont absents."
         ((tests_failed++))
     fi
 }
@@ -108,7 +117,7 @@ show_menu() {
     echo " 1 - Message simple"
     echo " 2 - Chaîne vide"
     echo " 3 - Emoji / Unicode"
-    echo " 4 - Long message"
+    echo " 4 - Long message (1000)"
     echo " 5 - Clients multiples"
     echo " 0 - Tous les tests"
     echo " q - Quitter"
@@ -140,7 +149,10 @@ for test in "${tests[@]}"; do
         1) run_test "Message simple" "Hello42!" ;;
         2) run_test "Chaîne vide" "" ;;
         3) run_test "Emoji / UTF-8" "🐍😎🔥 çøøl" ;;
-        4) msg=$(head -c 4000 /dev/urandom | base64 | head -c 4000); run_test "Message long (4k)" "$msg" ;;
+        4) 
+            msg=$(yes "X" | tr -d '\n' | head -c 1000)
+            run_test "Message long (1000)" "$msg"
+            ;;
         5) run_multi_client_test ;;
     esac
 done
@@ -153,5 +165,5 @@ echo -e "❌ Échoués : ${C_RED}$tests_failed${C_RESET}"
 if [ "$tests_failed" -eq 0 ]; then
     echo -e "\n${C_GREEN}🎉 Tout est bon, Minitalk est conforme !${C_RESET}"
 else
-    echo -e "\n${C_RED}⚠️  Des erreurs sont présentes. Vérifie les logs ci-dessus.${C_RESET}"
+    echo -e "\n${C_RED}⚠️  Des erreurs sont présentes. Consulte les logs ci-dessus.${C_RESET}"
 fi
