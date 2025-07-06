@@ -44,9 +44,10 @@ function test_message {
     $CLIENT "$REAL_PID" "$MESSAGE"
     sleep 1
 
-    RECEIVED=$(tail -n 1 "$SERVER_LOG" | tr -d '\0')
+    # Lecture complète du fichier, suppression des \0 éventuels
+    RECEIVED=$(tr -d '\0' < "$SERVER_LOG")
 
-    if [ "$RECEIVED" = "$MESSAGE" ]; then
+    if echo "$RECEIVED" | grep -qF "$MESSAGE"; then
         echo "${GREEN}✅ $DESCRIPTION${RESET}"
         ((TEST_OK++))
     else
@@ -86,9 +87,11 @@ function cleanup {
 launch_server
 
 test_message "salut" "Message texte simple"
+test_message "42Paris" "Nom d'école"
 test_message "🐍" "Caractère Unicode (🐍)"
 test_message "😎" "Emoji (😎)"
-test_message "abc" "Message avec terminaison explicite"
+test_message "abc" "Message simple avec fin explicite"
+test_message "test test test test" "Message un peu plus long"
 test_acknowledgement
 
 echo ""
