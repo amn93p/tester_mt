@@ -1,16 +1,16 @@
-# 🧪 Testeur Automatique pour `minitalk`
+# Testeur Automatique pour `minitalk`
 
 Ce script bash permet de **tester automatiquement** le bon fonctionnement de ton projet `minitalk`, y compris les **bonus**.
 
 ---
 
-## 🔧 Fichier
+## Fichier
 
 Nom du script : `test_mt.sh`
 
 ---
 
-## 📦 Contenu testé
+## Contenu testé
 
 | Test                         | Description |
 |------------------------------|-------------|
@@ -22,7 +22,7 @@ Nom du script : `test_mt.sh`
 
 ---
 
-## 🚀 Comment utiliser le testeur
+## Comment utiliser le testeur
 
 1. Assure-toi d’avoir compilé `server` et `client`  
    (automatiquement fait si `Makefile` présent)
@@ -41,7 +41,7 @@ chmod +x test_minitalk_bonus.sh
 
 ---
 
-## 🟢 Exemple de sortie réussie
+## Exemple de sortie réussie
 
 ```
 🛠️ Compilation...
@@ -58,7 +58,7 @@ chmod +x test_minitalk_bonus.sh
 
 ---
 
-## 🟥 Si un test échoue...
+## Si un test échoue...
 
 Par exemple :
 ```
@@ -66,13 +66,6 @@ Par exemple :
 ```
 
 Cela signifie que tu n’as pas encore implémenté le **bonus d’accusé de réception** (`pause()` côté client + `kill(pid, SIGUSR1)` côté serveur).
-
----
-
-## 📄 Dépendances
-
-- `bash` (interpréteur shell standard)
-- `tail`, `grep`, `cut`, `ps`, `kill`, `tr` : commandes Unix standard
 
 ---
 
@@ -89,8 +82,3 @@ Cela signifie que tu n’as pas encore implémenté le **bonus d’accusé de r�
 ```
 
 ---
-
-## ✨ Bonus à venir ?
-
-- Option `--verbose` pour voir tous les détails
-- Historique des tests avec logs horodatés
