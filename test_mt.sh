@@ -11,7 +11,7 @@ RED=$(tput setaf 1)
 RESET=$(tput sgr0)
 
 # Vérifie la présence des binaires ou compile
-if [ ! -f "$CLIENT" ] || [ ! -f "$SERVER" ]; then
+if [ ! -x "$CLIENT" ] || [ ! -x "$SERVER" ]; then
     echo "🔍 Binaire client/server introuvable. Tentative de compilation..."
     if [ -f Makefile ]; then
         make > /dev/null
@@ -23,16 +23,22 @@ fi
 
 function launch_server {
     echo "Lancement du serveur..."
-    $SERVER > "$SERVER_LOG" &
+    $SERVER > "$SERVER_LOG" 2>&1 &
     SERVER_PID=$!
-    sleep 0.5
-    REAL_PID=$(grep "PID:" "$SERVER_LOG" | cut -d " " -f2)
-    if [ -z "$REAL_PID" ]; then
-        echo "❌ PID introuvable."
-        kill $SERVER_PID 2>/dev/null
-        exit 1
-    fi
-    echo "PID capturé : $REAL_PID"
+
+    # Attente active jusqu'à ce que le PID soit affiché
+    for i in {1..20}; do
+        REAL_PID=$(grep -m1 "PID:" "$SERVER_LOG" | awk '{print $2}')
+        if [[ "$REAL_PID" =~ ^[0-9]+$ ]]; then
+            echo "PID capturé : $REAL_PID"
+            return
+        fi
+        sleep 0.1
+    done
+
+    echo "❌ PID introuvable après 2 secondes."
+    kill $SERVER_PID 2>/dev/null
+    exit 1
 }
 
 function test_message {
@@ -41,10 +47,9 @@ function test_message {
     ((TEST_TOTAL++))
     > "$SERVER_LOG"
 
-    $CLIENT "$REAL_PID" "$MESSAGE"
+    $CLIENT "$REAL_PID" "$MESSAGE" > /dev/null 2>&1
     sleep 1
 
-    # Lecture complète du fichier, suppression des \0 éventuels
     RECEIVED=$(tr -d '\0' < "$SERVER_LOG")
 
     if echo "$RECEIVED" | grep -qF "$MESSAGE"; then
@@ -53,7 +58,7 @@ function test_message {
     else
         echo "${RED}❌ $DESCRIPTION${RESET}"
         echo "    Attendu : '$MESSAGE'"
-        echo "    Reçu    : '$RECEIVED'"
+        echo "    Reçu (extrait) : '$(tail -n 5 "$SERVER_LOG" | tr -d '\0')'"
     fi
 }
 
@@ -61,7 +66,7 @@ function test_acknowledgement {
     ((TEST_TOTAL++))
     echo "Test ACK (client doit bloquer sans serveur)..."
 
-    ($CLIENT 999999 "ok" > /dev/null) &
+    ($CLIENT 999999 "ok" > /dev/null 2>&1) &
     CLIENT_PID=$!
 
     sleep 1
@@ -87,11 +92,11 @@ function cleanup {
 launch_server
 
 test_message "salut" "Message texte simple"
-test_message "42Paris" "Nom d'école"
+test_message "42Paris" "Nom de l'école"
 test_message "🐍" "Caractère Unicode (🐍)"
 test_message "😎" "Emoji (😎)"
-test_message "abc" "Message simple avec fin explicite"
-test_message "test test test test" "Message un peu plus long"
+test_message "abc" "Message court"
+test_message "message de test long avec plusieurs mots" "Message plus long"
 test_acknowledgement
 
 echo ""
