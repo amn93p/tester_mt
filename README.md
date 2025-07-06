@@ -64,7 +64,7 @@ Cela signifie que tu n’as pas encore implémenté le **bonus d’accusé de r�
 
 ---
 
-## 📂 Arborescence minimale
+## Arborescence minimale
 
 ```
 .
