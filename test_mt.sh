@@ -23,12 +23,14 @@ C_GREEN='\033[0;32m'
 C_YELLOW='\033[0;33m'
 C_BLUE='\033[0;34m'
 C_BOLD='\033[1m'
+C_MAGENTA='\033[0;35m'
 
 # --- Préfixes de message ---
 SUCCESS="${C_GREEN}${C_BOLD}[SUCCÈS]${C_RESET}"
 FAIL="${C_RED}${C_BOLD}[ÉCHEC]${C_RESET}"
 INFO="${C_BLUE}${C_BOLD}[INFO]${C_RESET}"
 WARN="${C_YELLOW}${C_BOLD}[ATTENTION]${C_RESET}"
+DEBUG="${C_MAGENTA}${C_BOLD}[DÉBOGAGE]${C_RESET}"
 
 # === Banque de messages de test ===
 SIMPLE_MSGS=(
@@ -73,13 +75,15 @@ save_settings() {
     echo "CLEAN_ON_EXIT=$CLEAN_ON_EXIT" > "$SETTINGS_FILE"
     echo "AUTO_COMPILE=$AUTO_COMPILE" >> "$SETTINGS_FILE"
     echo "SHOW_DIFF_ON_FAIL=$SHOW_DIFF_ON_FAIL" >> "$SETTINGS_FILE"
+    echo "DEBUG_MODE=$DEBUG_MODE" >> "$SETTINGS_FILE"
 }
 
 load_settings() {
     # Valeurs par défaut
-    CLEAN_ON_EXIT=false
+    CLEAN_ON_EXIT=true
     AUTO_COMPILE=true
     SHOW_DIFF_ON_FAIL=true
+    DEBUG_MODE=false
 
     if [ -f "$SETTINGS_FILE" ]; then
         source "$SETTINGS_FILE"
@@ -110,7 +114,7 @@ fancy_title() {
     echo
 }
 
-# === Compilation du projet (AMÉLIORÉ) ===
+# === Compilation du projet ===
 compile_project() {
     echo -e "$INFO Vérification de la présence d'un Makefile..."
     if [ ! -f "Makefile" ] && [ ! -f "makefile" ]; then
@@ -204,7 +208,7 @@ print_setting_status() {
     fi
 }
 
-# === Menu des paramètres ===
+# === Menu des paramètres (AMÉLIORÉ) ===
 show_settings_menu() {
     while true; do
         clear
@@ -213,6 +217,7 @@ show_settings_menu() {
         echo " 1. Nettoyer le projet en quittant ('fclean') : $(print_setting_status $CLEAN_ON_EXIT)"
         echo " 2. Compiler automatiquement au lancement      : $(print_setting_status $AUTO_COMPILE)"
         echo " 3. Afficher le 'diff' en cas d'échec        : $(print_setting_status $SHOW_DIFF_ON_FAIL)"
+        echo " 4. Mode Débogage (voir sortie brute)        : $(print_setting_status $DEBUG_MODE)"
         echo ""
         echo " r - Retour au menu principal"
         echo -n "> "
@@ -227,10 +232,12 @@ show_settings_menu() {
             3)
                 if [ "$SHOW_DIFF_ON_FAIL" = true ]; then SHOW_DIFF_ON_FAIL=false; else SHOW_DIFF_ON_FAIL=true; fi
                 ;;
+            4)
+                if [ "$DEBUG_MODE" = true ]; then DEBUG_MODE=false; else DEBUG_MODE=true; fi
+                ;;
             r|R) break ;;
             *) echo "Choix invalide." && sleep 1 ;;
         esac
-        # Sauvegarde des changements
         save_settings
     done
 }
@@ -288,10 +295,14 @@ start_server() {
     echo -e "$SUCCESS Serveur prêt. PID : ${C_BOLD}$SERVER_PID${C_RESET}"
 }
 
-# === Moteur de test ===
+# === Moteur de test (AMÉLIORÉ) ===
 run_test() {
     local title="$1"
     local message_sent="$2"
+    local expected_output
+    # Le test s'attend maintenant à ce que le serveur affiche le message suivi d'un retour à la ligne.
+    expected_output=$(printf "%s\n" "$message_sent")
+
     echo -e "\n--- $title ---"
     >"$SERVER_LOG"
 
@@ -301,9 +312,6 @@ run_test() {
         return
     fi
 
-    # L'utilisation de timeout est la clé de la compatibilité.
-    # Un client sans ACK se terminera bien avant le timeout.
-    # Un client avec ACK qui ne reçoit pas de réponse sera tué par le timeout, faisant échouer le test, ce qui est correct.
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$message_sent"
     local client_exit_code=$?
 
@@ -319,17 +327,24 @@ run_test() {
 
     sleep 0.2
     local message_received=$(tr -d '\0' < "$SERVER_LOG")
-    echo -e "📤 ${C_YELLOW}Envoyé  :${C_RESET} '$message_sent'"
-    echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$message_received'"
+    
+    if [ "$DEBUG_MODE" = true ]; then
+        echo -e "$DEBUG Contenu brut du log serveur :"
+        cat -e "$SERVER_LOG" # Affiche les caractères non imprimables
+        echo -e "$DEBUG Fin du contenu brut."
+    fi
 
-    if [[ "$message_received" == "$message_sent" ]]; then
+    echo -e "📤 ${C_YELLOW}Envoyé  :${C_RESET} '$message_sent'"
+    echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$(echo -n "$message_received" | sed 's/$/↵/' | tr -d '\n')'"
+
+    if [[ "$message_received" == "$expected_output" ]]; then
         echo -e "$SUCCESS Le message a été correctement reçu."
         ((tests_passed++))
     else
         echo -e "$FAIL Message reçu incorrect ou incomplet."
         if [ "$SHOW_DIFF_ON_FAIL" = true ]; then
             echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
-            diff --color=always <(echo -n "$message_sent") <(echo -n "$message_received")
+            diff --color=always <(echo -n "$expected_output") <(echo -n "$message_received")
             echo "--------------------"
         fi
         ((tests_failed++))
@@ -352,11 +367,9 @@ run_multi_client_test() {
     done
     
     local expected_output
-    expected_output=$(printf "%s\n%s\n%s" "$msg1" "$msg2" "$msg3")
+    expected_output=$(printf "%s\n%s\n%s\n" "$msg1" "$msg2" "$msg3")
 
     echo -e "$INFO Envoi de 3 messages à la suite, avec une pause entre chaque..."
-    # La pause est essentielle pour la compatibilité avec les projets qui ont le bonus ACK.
-    # Elle laisse le temps au serveur de répondre avant que le client suivant ne commence.
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg1" || { echo -e "$FAIL Le client 1 a échoué."; ((tests_failed++)); return; }
     sleep 0.2
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg2" || { echo -e "$FAIL Le client 2 a échoué."; ((tests_failed++)); return; }
@@ -365,8 +378,15 @@ run_multi_client_test() {
     sleep 0.5
 
     local received_output=$(tr -d '\0' < "$SERVER_LOG")
-    echo -e "📤 ${C_YELLOW}Attendu :${C_RESET} '$(echo "$expected_output" | sed 's/$/↵/' | tr -d '\n')'"
-    echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$(echo "$received_output" | sed 's/$/↵/' | tr -d '\n')'"
+    
+    if [ "$DEBUG_MODE" = true ]; then
+        echo -e "$DEBUG Contenu brut du log serveur :"
+        cat -e "$SERVER_LOG" # Affiche les caractères non imprimables
+        echo -e "$DEBUG Fin du contenu brut."
+    fi
+    
+    echo -e "📤 ${C_YELLOW}Attendu :${C_RESET} '$(echo -n "$expected_output" | sed 's/$/↵/' | tr -d '\n')'"
+    echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$(echo -n "$received_output" | sed 's/$/↵/' | tr -d '\n')'"
 
     if [[ "$received_output" == "$expected_output" ]]; then
         echo -e "$SUCCESS Tous les messages des clients ont été reçus dans le bon ordre."
@@ -375,7 +395,7 @@ run_multi_client_test() {
         echo -e "$FAIL Un ou plusieurs messages sont manquants ou corrompus."
         if [ "$SHOW_DIFF_ON_FAIL" = true ]; then
             echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
-            diff --color=always <(echo -n "$expected_output") <(echo -n "$received_output")
+            diff --color=always <(echo -n "$expected_output") <(echo -n "$message_received")
             echo "--------------------"
         fi
         ((tests_failed++))
