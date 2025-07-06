@@ -3,7 +3,7 @@
 SCRIPT_NAME="tester_mt"
 INSTALL_DIR="$HOME/.local/bin"
 INSTALL_PATH="$INSTALL_DIR/$SCRIPT_NAME"
-RAW_URL="https://raw.githubusercontent.com/amn93p/tester_mt/main/test_mt.sh"
+RAW_URL="https://raw.githubusercontent.com/amn93p/tester_mt/main/tester_mt"
 
 mkdir -p "$INSTALL_DIR"
 
@@ -14,14 +14,25 @@ curl -fsSL "$RAW_URL" -o "$INSTALL_PATH" || {
 }
 
 chmod +x "$INSTALL_PATH"
-
 echo "✅ $SCRIPT_NAME installé dans : $INSTALL_PATH"
 
 if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
-    echo "⚠️  $INSTALL_DIR n'est pas dans votre PATH."
-    echo "➡️  Ajoutez ceci à votre ~/.bashrc ou ~/.zshrc :"
-    echo "    export PATH=\"\$PATH:$INSTALL_DIR\""
+    SHELL_RC=""
+    if [ -n "$ZSH_VERSION" ]; then
+        SHELL_RC="$HOME/.zshrc"
+    elif [ -n "$BASH_VERSION" ]; then
+        SHELL_RC="$HOME/.bashrc"
+    else
+        SHELL_RC="$HOME/.profile"
+    fi
+
+    if ! grep -q "$INSTALL_DIR" "$SHELL_RC"; then
+        echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$SHELL_RC"
+        echo "🛠️  Ajout de $INSTALL_DIR au PATH dans $SHELL_RC"
+    fi
+
+    echo "🔁 Recharge ton terminal ou exécute :"
+    echo "    source $SHELL_RC"
 else
-    echo "🚀 Vous pouvez maintenant exécuter le testeur avec :"
-    echo "    tester_mt"
+    echo "🚀 Tu peux maintenant utiliser : tester_mt"
 fi
