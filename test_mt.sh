@@ -10,7 +10,7 @@ set +H # Désactive l'expansion de l'historique (!)
 SERVER="./server"
 CLIENT="./client"
 SERVER_LOG="server_output.log"
-CLIENT_TIMEOUT=10 # Temps max en secondes pour qu'un client termine (sécurité)
+CLIENT_TIMEOUT=15 # Timeout généreux pour ne pas pénaliser les implémentations plus lentes
 
 # Détermine le répertoire du script pour y stocker les paramètres
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
@@ -76,6 +76,7 @@ save_settings() {
     echo "AUTO_COMPILE=$AUTO_COMPILE" >> "$SETTINGS_FILE"
     echo "SHOW_DIFF_ON_FAIL=$SHOW_DIFF_ON_FAIL" >> "$SETTINGS_FILE"
     echo "DEBUG_MODE=$DEBUG_MODE" >> "$SETTINGS_FILE"
+    echo "ACK_MODE=$ACK_MODE" >> "$SETTINGS_FILE"
 }
 
 load_settings() {
@@ -84,6 +85,7 @@ load_settings() {
     AUTO_COMPILE=true
     SHOW_DIFF_ON_FAIL=false
     DEBUG_MODE=false
+    ACK_MODE=false # Par défaut, on teste sans le bonus ACK
 
     if [ -f "$SETTINGS_FILE" ]; then
         source "$SETTINGS_FILE"
@@ -219,6 +221,7 @@ show_settings_menu() {
         echo " 2. Compiler automatiquement au lancement      : $(print_setting_status $AUTO_COMPILE)"
         echo " 3. Afficher le 'diff' en cas d'échec        : $(print_setting_status $SHOW_DIFF_ON_FAIL)"
         echo " 4. Mode Débogage (voir sortie brute)        : $(print_setting_status $DEBUG_MODE)"
+        echo " 5. Mode Accusé de Réception (ACK) [BONUS]   : $(print_setting_status $ACK_MODE)"
         echo ""
         echo " r - Retour au menu principal"
         echo -n "> "
@@ -236,6 +239,9 @@ show_settings_menu() {
             4)
                 if [ "$DEBUG_MODE" = true ]; then DEBUG_MODE=false; else DEBUG_MODE=true; fi
                 ;;
+            5)
+                if [ "$ACK_MODE" = true ]; then ACK_MODE=false; else ACK_MODE=true; fi
+                ;;
             r|R) break ;;
             *) echo "Choix invalide." && sleep 1 ;;
         esac
@@ -252,7 +258,7 @@ show_menu() {
         echo " 0 - Tous les tests"
         echo " 1 - Message simple (aléatoire)"
         echo " 2 - Chaîne vide"
-        echo " 3 - Emoji / Unicode (aléatoire)"
+        echo " 3 - Bonus: Emoji / Unicode (aléatoire)"
         echo " 4 - Long message (1000)"
         echo " 5 - Clients multiples (aléatoire)"
         echo " p - Paramètres"
@@ -317,7 +323,7 @@ run_test() {
     local client_exit_code=$?
 
     if [ $client_exit_code -eq 124 ]; then
-        echo -e "$FAIL Le client a dépassé le temps imparti de ${CLIENT_TIMEOUT}s. Le serveur est-il bloqué ou ne renvoie-t-il pas d'ACK ?"
+        echo -e "$FAIL Le client a dépassé le temps imparti de ${CLIENT_TIMEOUT}s. Le serveur est-il bloqué ou, si le bonus ACK est implémenté, ne le renvoie-t-il pas ?"
         ((tests_failed++))
         return
     elif [ $client_exit_code -ne 0 ]; then
@@ -327,7 +333,8 @@ run_test() {
     fi
 
     sleep 0.2
-    local message_received=$(tr -d '\0' < "$SERVER_LOG")
+    local message_received
+    message_received=$(tr -d '\0' < "$SERVER_LOG")
     
     if [ "$DEBUG_MODE" = true ]; then
         echo -e "$DEBUG Contenu brut du log serveur :"
@@ -352,7 +359,7 @@ run_test() {
     fi
 }
 
-# === Test Multi-Clients ===
+# === Test Multi-Clients (AMÉLIORÉ AVEC MODE ACK) ===
 run_multi_client_test() {
     echo -e "\n--- Test: Clients multiples (en série, aléatoire) ---"
     >"$SERVER_LOG"
@@ -369,16 +376,25 @@ run_multi_client_test() {
     
     local expected_output
     expected_output=$(printf "%s\n%s\n%s\n" "$msg1" "$msg2" "$msg3")
+    
+    local inter_client_sleep=0.5 # Pause par défaut, généreuse pour les projets SANS ACK
+    if [ "$ACK_MODE" = true ]; then
+        inter_client_sleep=0.1 # Pause courte, on se fie au mécanisme d'ACK pour la synchronisation
+        echo -e "$INFO Mode ACK activé. Utilisation de pauses courtes entre les clients."
+    else
+        echo -e "$INFO Mode ACK désactivé. Utilisation de pauses longues entre les clients."
+    fi
 
-    echo -e "$INFO Envoi de 3 messages à la suite, avec une pause entre chaque..."
+    echo -e "$INFO Envoi de 3 messages à la suite..."
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg1" || { echo -e "$FAIL Le client 1 a échoué."; ((tests_failed++)); return; }
-    sleep 0.2
+    sleep "$inter_client_sleep"
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg2" || { echo -e "$FAIL Le client 2 a échoué."; ((tests_failed++)); return; }
-    sleep 0.2
+    sleep "$inter_client_sleep"
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg3" || { echo -e "$FAIL Le client 3 a échoué."; ((tests_failed++)); return; }
     sleep 0.5
 
-    local received_output=$(tr -d '\0' < "$SERVER_LOG")
+    local received_output
+    received_output=$(tr -d '\0' < "$SERVER_LOG")
     
     if [ "$DEBUG_MODE" = true ]; then
         echo -e "$DEBUG Contenu brut du log serveur :"
@@ -396,7 +412,7 @@ run_multi_client_test() {
         echo -e "$FAIL Un ou plusieurs messages sont manquants ou corrompus."
         if [ "$SHOW_DIFF_ON_FAIL" = true ]; then
             echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
-            diff --color=always <(echo -n "$expected_output") <(echo -n "$message_received")
+            diff --color=always <(echo -n "$expected_output") <(echo -n "$received_output")
             echo "--------------------"
         fi
         ((tests_failed++))
@@ -433,7 +449,7 @@ for test in "${tests[@]}"; do
         2) run_test "Chaîne vide" "" ;;
         3) 
             msg=${UNICODE_MSGS[$RANDOM % ${#UNICODE_MSGS[@]}]}
-            run_test "Emoji / UTF-8 (aléatoire)" "$msg"
+            run_test "Bonus: Emoji / UTF-8 (aléatoire)" "$msg"
             ;;
         4) 
             msg=$(head -c 1000 /dev/urandom | base64 | tr -d '\n' | head -c 1000)
