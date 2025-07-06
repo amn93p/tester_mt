@@ -12,7 +12,7 @@ CLIENT="./client"
 SERVER_LOG="server_output.log"
 CLIENT_TIMEOUT=10 # Temps max en secondes pour qu'un client termine (sécurité)
 
-# Détermine le répertoire du script pour y stocker les paramètres (NOUVEAU)
+# Détermine le répertoire du script pour y stocker les paramètres
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 SETTINGS_FILE="$SCRIPT_DIR/.tester_settings" # Fichier pour sauvegarder les paramètres
 
@@ -110,21 +110,17 @@ fancy_title() {
     echo
 }
 
-# === Compilation du projet ===
+# === Compilation du projet (AMÉLIORÉ) ===
 compile_project() {
-    echo -e "$INFO Vérification des fichiers sources et du Makefile..."
-    if [ ! -f "server.c" ] || [ ! -f "client.c" ]; then
-        echo -e "$FAIL 'server.c' ou 'client.c' est introuvable."
-        echo -e "$INFO Assurez-vous que le testeur est dans le bon répertoire."
-        exit 1
-    fi
+    echo -e "$INFO Vérification de la présence d'un Makefile..."
     if [ ! -f "Makefile" ] && [ ! -f "makefile" ]; then
-        echo -e "$FAIL Aucun Makefile trouvé. Impossible de compiler le projet."
+        echo -e "$FAIL Aucun Makefile trouvé. Impossible de lancer la compilation."
+        echo -e "$INFO Assurez-vous que le testeur est dans le répertoire racine de votre projet Minitalk."
         exit 1
     fi
-    echo -e "$SUCCESS Fichiers sources et Makefile trouvés."
+    echo -e "$SUCCESS Makefile trouvé."
 
-    echo -e "$INFO Lancement de la compilation si nécessaire..."
+    echo -e "$INFO Lancement de la compilation via 'make'..."
     local make_output
     make_output=$(make 2>&1)
     local make_exit_code=$?
@@ -273,7 +269,7 @@ show_menu() {
 start_server() {
     echo -e "$INFO Lancement du serveur..."
     if [ ! -f "$SERVER" ] || [ ! -x "$SERVER" ]; then
-        echo -e "$FAIL L'exécutable du serveur '$SERVER' est introuvable. Problème de compilation ?"
+        echo -e "$FAIL L'exécutable du serveur '$SERVER' est introuvable. Compilez votre projet ou activez la compilation auto."
         exit 1
     fi
     >"$SERVER_LOG"
@@ -300,7 +296,7 @@ run_test() {
     >"$SERVER_LOG"
 
     if [ ! -f "$CLIENT" ] || [ ! -x "$CLIENT" ]; then
-        echo -e "$FAIL L'exécutable du client '$CLIENT' est introuvable. Problème de compilation ?"
+        echo -e "$FAIL L'exécutable du client '$CLIENT' est introuvable. Compilez votre projet ou activez la compilation auto."
         ((tests_failed++))
         return
     fi
