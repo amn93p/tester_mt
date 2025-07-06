@@ -11,7 +11,10 @@ SERVER="./server"
 CLIENT="./client"
 SERVER_LOG="server_output.log"
 CLIENT_TIMEOUT=10 # Temps max en secondes pour qu'un client termine (sécurité)
-SETTINGS_FILE=".tester_settings" # Fichier pour sauvegarder les paramètres
+
+# Détermine le répertoire du script pour y stocker les paramètres (NOUVEAU)
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SETTINGS_FILE="$SCRIPT_DIR/.tester_settings" # Fichier pour sauvegarder les paramètres
 
 # --- Couleurs & Styles ---
 C_RESET='\033[0m'
@@ -65,7 +68,7 @@ SERVER_PID="" # Initialisation à vide est cruciale
 
 # ==================== Fonctions Principales ====================
 
-# === Sauvegarde et chargement des paramètres (NOUVEAU) ===
+# === Sauvegarde et chargement des paramètres ===
 save_settings() {
     echo "CLEAN_ON_EXIT=$CLEAN_ON_EXIT" > "$SETTINGS_FILE"
     echo "AUTO_COMPILE=$AUTO_COMPILE" >> "$SETTINGS_FILE"
@@ -141,7 +144,7 @@ compile_project() {
     fi
 }
 
-# === Nettoyage (AMÉLIORÉ) ===
+# === Nettoyage ===
 cleanup() {
     local server_was_running=false
     if [[ -n "$SERVER_PID" ]] && ps -p "$SERVER_PID" > /dev/null; then
@@ -164,7 +167,7 @@ cleanup() {
     rm -f "$SERVER_LOG"
 }
 
-# === Fonction de désinstallation (AMÉLIORÉ) ===
+# === Fonction de désinstallation ===
 uninstall() {
     echo -e "$WARN Cette action va nettoyer le projet (make fclean) et ${C_BOLD}supprimer ce script (${0})${C_RESET}."
     read -p "Êtes-vous sûr de vouloir continuer? (y/n) " -n 1 -r
@@ -205,7 +208,7 @@ print_setting_status() {
     fi
 }
 
-# === Menu des paramètres (AMÉLIORÉ) ===
+# === Menu des paramètres ===
 show_settings_menu() {
     while true; do
         clear
