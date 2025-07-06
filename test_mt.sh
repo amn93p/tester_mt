@@ -1,12 +1,13 @@
 #!/bin/bash
-set +H  # Désactive l'expansion de l'historique (!)
+set +H # Désactive l'expansion de l'historique (!)
 
 # ╔════════════════════════════════════════════════════════════════════╗
-# ║                      Testeur Minitalk Interactif                  ║
-# ║              Parfait pour le sujet 42 + bonus Unicode & ACK       ║
+# ║           Testeur Minitalk Interactif                            ║
+# ║     Parfait pour le sujet 42 + bonus Unicode & ACK               ║
 # ╚════════════════════════════════════════════════════════════════════╝
 
 # === Dégradé propre : couleur entière par ligne ===
+# Cette fonction fonctionne bien pour l'affichage DANS le script lui-même.
 gradient_line() {
     local text="$1"
     local r=$((RANDOM % 156 + 100))
@@ -15,13 +16,13 @@ gradient_line() {
     echo -e "\033[38;2;${r};${g};${b}m${text}\033[0m"
 }
 
-# === ASCII art stylisé ===
+# === ASCII art stylisé pour le titre du testeur ===
 fancy_title() {
     echo
     gradient_line "  _______ __  __ _______ "
-    gradient_line " |__   __|  \\/  |__   __|"
-    gradient_line "    | |  | \\  / |  | |   "
-    gradient_line "    | |  | |\\/| |  | |   "
+    gradient_line " |__   __|  \/  |__   __|"
+    gradient_line "    | |  | \  / |  | |   "
+    gradient_line "    | |  | |\/| |  | |   "
     gradient_line "    | |  | |  | |  | |   "
     gradient_line "    |_|  |_|  |_|  |_|   "
     echo
@@ -48,23 +49,33 @@ tests_failed=0
 
 cleanup() {
     echo -e "\n$INFO Nettoyage..."
-    kill $SERVER_PID 2>/dev/null
+    # Silencieux si le processus n'existe plus
+    if ps -p $SERVER_PID > /dev/null; then
+       kill $SERVER_PID
+    fi
     rm -f "$SERVER_LOG"
 }
 trap cleanup EXIT
 
 start_server() {
     echo -e "$INFO Lancement du serveur..."
+    if [ ! -f "$SERVER" ] || [ ! -x "$SERVER" ]; then
+        echo -e "$FAIL L'exécutable du serveur '$SERVER' est introuvable."
+        exit 1
+    fi
     $SERVER > "$SERVER_LOG" 2>&1 &
     SERVER_PID=$!
-    sleep 0.5
+    sleep 0.5 # Laisse le temps au serveur de démarrer et d'afficher son PID
+
+    # Tente de récupérer le PID de manière plus robuste
     local detected_pid=$(grep -o '[0-9]\+' "$SERVER_LOG" | head -n1)
     if [[ -z "$detected_pid" ]]; then
-        echo -e "$FAIL PID non détecté. Log :"
+        echo -e "$FAIL PID du serveur non détecté dans $SERVER_LOG. Le serveur a-t-il pu démarrer ?"
+        echo -e "$INFO Contenu du log du serveur :"
         cat "$SERVER_LOG"
         exit 1
     fi
-    SERVER_PID=$detected_pid
+    SERVER_PID=$detected_pid # On utilise le PID affiché par le serveur
     echo -e "$SUCCESS Serveur prêt. PID : ${C_BOLD}$SERVER_PID${C_RESET}"
 }
 
@@ -72,52 +83,83 @@ run_test() {
     local title="$1"
     local message="$2"
     echo -e "\n--- $title ---"
-    > "$SERVER_LOG"
+    # Vide le log serveur avant chaque test pour ne pas avoir les résultats des tests précédents
+    >"$SERVER_LOG"
 
+    # Vérifie si le client existe et est exécutable
+    if [ ! -f "$CLIENT" ] || [ ! -x "$CLIENT" ]; then
+        echo -e "$FAIL L'exécutable du client '$CLIENT' est introuvable."
+        ((tests_failed++))
+        return
+    fi
+
+    # L'envoi du message
     ./$CLIENT "$SERVER_PID" "$message"
-    sleep 1
+    sleep 1.5 # On augmente un peu le délai pour les messages longs ou complexes
+
+    # tr -d '\0' supprime les caractères nuls qui peuvent apparaître
     local received=$(cat "$SERVER_LOG" | tr -d '\0')
 
-    echo -e "📤 ${C_YELLOW}Envoyé   :${C_RESET} '$message'"
-    echo -e "📥 ${C_YELLOW}Reçu     :${C_RESET} '$received'"
+    echo -e "📤 ${C_YELLOW}Envoyé  :${C_RESET} '$message'"
+    echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$received'"
 
-    if [[ "$received" == *"$message"* ]]; then
+    # La comparaison doit être exacte. "==" est plus strict que "*...*".
+    if [[ "$received" == "$message" ]]; then
         echo -e "$SUCCESS Le message a été correctement reçu."
         ((tests_passed++))
     else
-        echo -e "$FAIL Message incorrect ou incomplet."
+        echo -e "$FAIL Message reçu incorrect ou incomplet."
         ((tests_failed++))
     fi
 }
 
 run_multi_client_test() {
     echo -e "\n--- Test: Clients multiples ---"
-    > "$SERVER_LOG"
+    >"$SERVER_LOG"
 
-    ./$CLIENT "$SERVER_PID" "A" &
+    ./$CLIENT "$SERVER_PID" "Message_Client_A" &
     pid1=$!
-    sleep 0.2
-    ./$CLIENT "$SERVER_PID" "B" &
+    ./$CLIENT "$SERVER_PID" "Message_Client_B" &
     pid2=$!
-    sleep 0.2
-    ./$CLIENT "$SERVER_PID" "C" &
+    ./$CLIENT "$SERVER_PID" "Message_Client_C" &
     pid3=$!
 
     wait $pid1 $pid2 $pid3
-    sleep 1
+    sleep 1 # Attendre que le serveur traite tout
 
     output=$(tr -d '\0' < "$SERVER_LOG")
-
     echo -e "📥 ${C_YELLOW}Reçu total :${C_RESET} '$output'"
 
-    if [[ "$output" == *"A"* && "$output" == *"B"* && "$output" == *"C"* ]]; then
-        echo -e "$SUCCESS Tous les messages clients ont été reçus."
+    # On vérifie que les 3 messages sont bien présents
+    if [[ "$output" == *"Message_Client_A"* && "$output" == *"Message_Client_B"* && "$output" == *"Message_Client_C"* ]]; then
+        echo -e "$SUCCESS Tous les messages des clients ont été reçus."
         ((tests_passed++))
     else
-        echo -e "$FAIL Un ou plusieurs messages sont absents."
+        echo -e "$FAIL Un ou plusieurs messages sont manquants ou corrompus."
         ((tests_failed++))
     fi
 }
+
+# ======================= NOUVELLE FONCTION DE TEST =======================
+run_gradient_art_test() {
+    local title="Test: ASCII Art en dégradé"
+    
+    # On définit l'art ASCII ligne par ligne.
+    # La syntaxe $'\...' permet à Bash d'interpréter les codes \033 comme en C.
+    # Cela crée une chaîne avec les VRAIS caractères de contrôle, pas le texte "\033".
+    # On ajoute aussi les sauts de ligne `\n` pour que ce soit multi-ligne.
+    ART_MESSAGE=""
+    ART_MESSAGE+=$'\033[38;2;200;255;50m  _ _ _ _ _    _ _ _ _ _ \n'
+    ART_MESSAGE+=$'\033[38;2;190;250;40m|           |/           |\n'
+    ART_MESSAGE+=$'\033[38;2;180;245;30m|           /            |\n'
+    ART_MESSAGE+=$'\033[38;2;170;240;20m| _ _ _ _ _ | _ _ _ _ _ _|\n'
+    ART_MESSAGE+=$'\033[0m' # Reset de la couleur à la fin
+
+    # On lance le test normalement avec la variable qui contient maintenant les bons codes
+    run_test "$title" "$ART_MESSAGE"
+}
+# =========================================================================
+
 
 show_menu() {
     echo -e "${C_BOLD}Sélectionne les tests à lancer :${C_RESET}"
@@ -126,6 +168,7 @@ show_menu() {
     echo " 3 - Emoji / Unicode"
     echo " 4 - Long message (1000)"
     echo " 5 - Clients multiples"
+    echo " 6 - Art ASCII en dégradé (Bonus)"
     echo " 0 - Tous les tests"
     echo " q - Quitter"
     echo -n "> "
@@ -136,7 +179,8 @@ show_menu() {
         3) tests=(3) ;;
         4) tests=(4) ;;
         5) tests=(5) ;;
-        0) tests=(1 2 3 4 5) ;;
+        6) tests=(6) ;; # Ajout de l'option de menu
+        0) tests=(1 2 3 4 5 6) ;; # Ajout au "tous les tests"
         q|Q) echo "Annulé."; exit 0 ;;
         *) echo "Choix invalide."; show_menu ;;
     esac
@@ -144,25 +188,20 @@ show_menu() {
 
 # === MAIN ===
 fancy_title
-
-if [ ! -x "$SERVER" ] || [ ! -x "$CLIENT" ]; then
-    echo -e "$FAIL Serveur ou client introuvable/non exécutable."
-    exit 1
-fi
-
 show_menu
 start_server
 
 for test in "${tests[@]}"; do
     case $test in
-        1) run_test "Message simple" "Hello42!" ;;
+        1) run_test "Message simple" "Hello 42!" ;;
         2) run_test "Chaîne vide" "" ;;
-        3) run_test "Emoji / UTF-8" "🐍😎🔥 çøøl" ;;
+        3) run_test "Emoji / UTF-8" "🐍😎🔥 çøøl 漢字" ;;
         4) 
-            msg=$(yes "X" | tr -d '\n' | head -c 1000)
-            run_test "Message long (1000)" "$msg"
+            msg=$(head -c 1000 /dev/urandom | base64 | tr -d '\n' | head -c 1000)
+            run_test "Message long et complexe (1000)" "$msg"
             ;;
         5) run_multi_client_test ;;
+        6) run_gradient_art_test ;; # Appel de la nouvelle fonction de test
     esac
 done
 
