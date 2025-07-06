@@ -1,30 +1,27 @@
 #!/bin/bash
 
-# ╔═════════════════════════════════════════════════════════════════════════╗
-# ║                  Minitalk Tester — Mode Interactif + ASCII             ║
-# ║          Robuste, compatible bonus, avec sélection des tests           ║
-# ╚═════════════════════════════════════════════════════════════════════════╝
+# ╔════════════════════════════════════════════════════════════════════╗
+# ║                      Testeur Minitalk Interactif                  ║
+# ║              Parfait pour le sujet 42 + bonus Unicode & ACK       ║
+# ╚════════════════════════════════════════════════════════════════════╝
 
-# ASCII art
+# --- ASCII Art ---
 echo -e "
-${C_BOLD}${C_BLUE}
-_________ _______ _________
-\\__   __/(       )\\__   __/
-   ) (   | () () |   ) (   
-   | |   | || || |   | |   
-   | |   | |(_)| |   | |   
-   | |   | |   | |   | |   
-   | |   | )   ( |   | |   
-   )_(   |/     \\|   )_(   
-                          
-${C_RESET}
-"
+\033[1;34m
+  _______ __  __ _______ 
+ |__   __|  \/  |__   __|
+    | |  | \  / |  | |   
+    | |  | |\/| |  | |   
+    | |  | |  | |  | |   
+    |_|  |_|  |_|  |_|   
+\033[0m"
 
 # --- Configuration ---
 SERVER="./server"
 CLIENT="./client"
 SERVER_LOG="server.log"
 
+# --- Style terminal ---
 C_RESET='\033[0m'
 C_RED='\033[0;31m'
 C_GREEN='\033[0;32m'
@@ -36,6 +33,7 @@ SUCCESS="${C_GREEN}${C_BOLD}[SUCCÈS]${C_RESET}"
 FAIL="${C_RED}${C_BOLD}[ÉCHEC]${C_RESET}"
 INFO="${C_BLUE}${C_BOLD}[INFO]${C_RESET}"
 
+# --- Compteurs ---
 tests_passed=0
 tests_failed=0
 
@@ -54,11 +52,11 @@ start_server() {
     sleep 0.5
     local displayed_pid=$(grep -o -m 1 '[0-9]\+' "$SERVER_LOG")
     if [[ -n "$displayed_pid" ]]; then
-        echo -e "$SUCCESS Serveur démarré. PID détecté : ${C_BOLD}$displayed_pid${C_RESET}"
+        echo -e "$SUCCESS Serveur lancé. PID : ${C_BOLD}$displayed_pid${C_RESET}"
         SERVER_PID=$displayed_pid
         sed -i '1d' "$SERVER_LOG"
     else
-        echo -e "$FAIL PID non détecté. Contenu du log :"
+        echo -e "$FAIL PID non détecté. Log :"
         cat "$SERVER_LOG"
         exit 1
     fi
@@ -78,8 +76,8 @@ run_test() {
     wait $client_pid 2>/dev/null
     local status=$?
     kill $watchdog 2>/dev/null
-
     sleep 0.1
+
     local output=$(tr -d '\0' < "$SERVER_LOG")
     if [ $status -ne 0 ]; then
         echo -e "$FAIL Client bloqué ou timeout après $timeout s."
