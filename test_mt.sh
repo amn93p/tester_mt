@@ -1,38 +1,28 @@
 #!/bin/bash
-set +H  # désactive l'expansion historique de Bash (!)
+set +H  # désactive l'expansion historique (!)
 
 # ╔════════════════════════════════════════════════════════════════════╗
 # ║                      Testeur Minitalk Interactif                  ║
 # ║              Parfait pour le sujet 42 + bonus Unicode & ACK       ║
 # ╚════════════════════════════════════════════════════════════════════╝
 
-# === Couleur principale aléatoire pour le dégradé ===
-base_r=$((RANDOM % 156 + 100))
-base_g=$((RANDOM % 156 + 100))
-base_b=$((RANDOM % 156 + 100))
-
-function gradient_line() {
+# === Dégradé simple par ligne (uniforme et aligné) ===
+gradient_line() {
     local text="$1"
-    local length=${#text}
-    local out=""
-    for ((i = 0; i < length; i++)); do
-        r=$(( (base_r + i * 3) % 256 ))
-        g=$(( (base_g + i * 5) % 256 ))
-        b=$(( (base_b + i * 7) % 256 ))
-        char="${text:$i:1}"
-        out+="\033[38;2;${r};${g};${b}m$char"
-    done
-    echo -e "$out\033[0m"
+    local r=$((RANDOM % 156 + 100))
+    local g=$((RANDOM % 156 + 100))
+    local b=$((RANDOM % 156 + 100))
+    echo -e "\033[38;2;${r};${g};${b}m${text}\033[0m"
 }
 
-function fancy_title() {
+fancy_title() {
     echo
-    gradient_line "  _______ __  __ _______ "
-    gradient_line " |__   __|  \\/  |__   __|"
-    gradient_line "    | |  | \\  / |  | |   "
-    gradient_line "    | |  | |\\/| |  | |   "
-    gradient_line "    | |  | |  | |  | |   "
-    gradient_line "    |_|  |_|  |_|  |_|   "
+    gradient_line " _______ __  __ _______ "
+    gradient_line "|__   __|  \\/  |__   __|"
+    gradient_line "   | |  | \\  / |  | |   "
+    gradient_line "   | |  | |\\/| |  | |   "
+    gradient_line "   | |  | |  | |  | |   "
+    gradient_line "   |_|  |_|  |_|  |_|   "
     echo
 }
 
