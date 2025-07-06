@@ -9,7 +9,7 @@ set +H # Désactive l'expansion de l'historique (!)
 # === Configuration ===
 SERVER="./server"
 CLIENT="./client"
-SERVER_LOG="server_output.log" # Renommé en .log par convention
+SERVER_LOG="server_output.log"
 CLIENT_TIMEOUT=10 # Temps max en secondes pour qu'un client termine (sécurité)
 
 # --- Couleurs & Styles ---
@@ -58,7 +58,7 @@ cleanup() {
     echo -e "\n$INFO Nettoyage..."
     # On ne tente de tuer le processus QUE si la variable SERVER_PID n'est pas vide
     if [[ -n "$SERVER_PID" ]] && ps -p "$SERVER_PID" > /dev/null; then
-       kill "$SERVER_PID" 2>/dev/null # Ajout de 2>/dev/null pour ignorer l'erreur si le proc est déjà mort
+       kill "$SERVER_PID" 2>/dev/null
     fi
     rm -f "$SERVER_LOG"
 }
@@ -71,13 +71,11 @@ start_server() {
         echo -e "$FAIL L'exécutable du serveur '$SERVER' est introuvable."
         exit 1
     fi
-    # On vide le log au cas où il resterait d'une session précédente
     >"$SERVER_LOG"
     $SERVER > "$SERVER_LOG" 2>&1 &
     SERVER_PID=$!
     sleep 0.5
 
-    # Tente de récupérer le PID affiché par le serveur lui-même
     local detected_pid=$(grep -o '[0-9]\+' "$SERVER_LOG" | head -n1)
     if [[ -z "$detected_pid" ]]; then
         echo -e "$FAIL PID du serveur non détecté dans $SERVER_LOG. Le serveur a-t-il pu démarrer ?"
@@ -102,7 +100,6 @@ run_test() {
         return
     fi
 
-    # Exécution du client avec un timeout pour éviter les blocages infinis
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$message_sent"
     local client_exit_code=$?
 
@@ -116,7 +113,6 @@ run_test() {
         return
     fi
 
-    # Laisser une marge au serveur pour finir d'écrire dans son log
     sleep 0.2
 
     local message_received=$(tr -d '\0' < "$SERVER_LOG")
@@ -129,7 +125,6 @@ run_test() {
         ((tests_passed++))
     else
         echo -e "$FAIL Message reçu incorrect ou incomplet."
-        # Affichage du diff pour un débogage facile
         echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
         diff --color=always <(echo -n "$message_sent") <(echo -n "$message_received")
         echo "--------------------"
@@ -137,7 +132,7 @@ run_test() {
     fi
 }
 
-# === Test Multi-Clients (CORRIGÉ) ===
+# === Test Multi-Clients (CORRIGÉ pour les retours à la ligne) ===
 run_multi_client_test() {
     echo -e "\n--- Test: Clients multiples (en série) ---"
     >"$SERVER_LOG"
@@ -145,18 +140,21 @@ run_multi_client_test() {
     local msg1="Premier message."
     local msg2="Deuxième test."
     local msg3="Troisième envoi."
-    local expected_output="${msg1}${msg2}${msg3}"
+    
+    local expected_output
+    expected_output=$(printf "%s\n%s\n%s" "$msg1" "$msg2" "$msg3")
 
     echo -e "$INFO Envoi de 3 messages à la suite..."
-    timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg1"
-    timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg2"
-    timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg3"
+    timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg1" || { echo -e "$FAIL Le client 1 a échoué."; ((tests_failed++)); return; }
+    timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg2" || { echo -e "$FAIL Le client 2 a échoué."; ((tests_failed++)); return; }
+    timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg3" || { echo -e "$FAIL Le client 3 a échoué."; ((tests_failed++)); return; }
     
-    sleep 0.5 # Attendre que le serveur traite tout
+    sleep 0.5
 
     local received_output=$(tr -d '\0' < "$SERVER_LOG")
-    echo -e "📤 ${C_YELLOW}Attendu :${C_RESET} '$expected_output'"
-    echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$received_output'"
+    
+    echo -e "📤 ${C_YELLOW}Attendu :${C_RESET} '$(echo "$expected_output" | sed 's/$/↵/' | tr -d '\n')'"
+    echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$(echo "$received_output" | sed 's/$/↵/' | tr -d '\n')'"
 
     if [[ "$received_output" == "$expected_output" ]]; then
         echo -e "$SUCCESS Tous les messages des clients ont été reçus dans le bon ordre."
@@ -170,7 +168,7 @@ run_multi_client_test() {
     fi
 }
 
-# === Menu (INCHANGÉ) ===
+# === Menu (Modifié) ===
 show_menu() {
     echo -e "${C_BOLD}Sélectionne les tests à lancer :${C_RESET}"
     echo " 1 - Message simple"
@@ -188,7 +186,7 @@ show_menu() {
         3) tests=(3) ;;
         4) tests=(4) ;;
         5) tests=(5) ;;
-        0) tests=(1 2 3 4 5) ;;
+        0) tests=(1 2 3 4 5) ;; # Option 6 retirée
         q|Q) echo "Annulé."; exit 0 ;;
         *) echo "Choix invalide."; show_menu ;;
     esac
@@ -209,6 +207,7 @@ for test in "${tests[@]}"; do
             run_test "Message long et complexe (1000)" "$msg"
             ;;
         5) run_multi_client_test ;;
+        # Cas 6 retiré
     esac
 done
 
