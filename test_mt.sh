@@ -12,7 +12,7 @@ RESET=$(tput sgr0)
 
 # Vérifie présence des fichiers nécessaires ou compile
 if [ ! -f "$CLIENT" ] || [ ! -f "$SERVER" ]; then
-    echo "🔎 Binaire client/server introuvable. Tentative de compilation..."
+    echo "🔍 Binaire client/server introuvable. Tentative de compilation..."
     if [ -f Makefile ]; then
         make > /dev/null
     else
@@ -22,7 +22,7 @@ if [ ! -f "$CLIENT" ] || [ ! -f "$SERVER" ]; then
 fi
 
 function launch_server {
-    echo "🚀 Lancement du serveur..."
+    echo "Lancement du serveur..."
     $SERVER > "$SERVER_LOG" &
     SERVER_PID=$!
     sleep 0.5
@@ -32,7 +32,7 @@ function launch_server {
         kill $SERVER_PID 2>/dev/null
         exit 1
     fi
-    echo "📡 PID capturé : $REAL_PID"
+    echo "PID capturé : $REAL_PID"
 }
 
 function test_message {
@@ -60,7 +60,7 @@ function test_acknowledgement {
     ((TEST_TOTAL++))
     > "$SERVER_LOG"
 
-    echo "🧪 Test ACK (accusé de réception)..."
+    echo "Test ACK (accusé de réception)..."
 
     ($CLIENT "$REAL_PID" "ok" > /dev/null) &
     CLIENT_PID=$!
@@ -81,21 +81,21 @@ function cleanup {
     rm -f "$SERVER_LOG"
     if [ -f Makefile ]; then
         make fclean > /dev/null
-        echo "🧼 Projet nettoyé (make fclean)."
+        echo "Projet nettoyé (make fclean)."
     fi
 }
 
 launch_server
 
 test_message "salut" "Message texte simple"
-test_message "🐍" "Caractère Unicode 🐍"
-test_message "😎" "Emoji 😎"
+test_message "🐍" "Caractère Unicode"
+test_message "😎" "Emoji"
 test_message "abc\0def" "Gestion du caractère nul (ne doit afficher que abc)"
 test_acknowledgement
 
 echo ""
 if [ "$TEST_OK" -eq "$TEST_TOTAL" ]; then
-    echo "${GREEN}🎉 Tous les tests sont passés ! ($TEST_OK/$TEST_TOTAL)${RESET}"
+    echo "${GREEN}✅ Tous les tests sont passés ! ($TEST_OK/$TEST_TOTAL)${RESET}"
 else
     echo "${RED}❌ $TEST_OK tests réussis sur $TEST_TOTAL${RESET}"
 fi
