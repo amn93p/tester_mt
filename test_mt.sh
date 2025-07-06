@@ -1,24 +1,4 @@
-if [ ! -f "client.c" ] || [ ! -f "server.c" ]; then
-    echo "🔎 Fichiers source non trouvés. Tentative de compilation avec Makefile..."
-    if [ -f Makefile ]; then
-        make > /dev/null
-        if [ ! -f "./client" ] || [ ! -f "./server" ]; then
-            echo "❌ Compilation échouée. Aucun binaire trouvé."
-            exit 1
-        fi
-    else
-        echo "❌ Ni fichiers sources ni Makefile trouvés dans ce dossier."
-        echo "💡 Place-toi dans un projet minitalk valide."
-        exit 1
-    fi
-fi
-
 #!/bin/bash
-
-if [ ! -f "client.c" ] || [ ! -f "server.c" ]; then
-    echo "❌ Ce script doit être lancé dans le dossier du projet minitalk."
-    exit 1
-fi
 
 SERVER="./server"
 CLIENT="./client"
@@ -30,18 +10,19 @@ GREEN=$(tput setaf 2)
 RED=$(tput setaf 1)
 RESET=$(tput sgr0)
 
-function compile_project {
-    echo "Compilation..."
+# Vérifie présence des fichiers nécessaires ou compile
+if [ ! -f "$CLIENT" ] || [ ! -f "$SERVER" ]; then
+    echo "🔎 Binaire client/server introuvable. Tentative de compilation..."
     if [ -f Makefile ]; then
-        make re > /dev/null
+        make > /dev/null
     else
-        gcc -Wall -Wextra -Werror server.c libft_utils.c -o server
-        gcc -Wall -Wextra -Werror client.c libft_utils.c -o client
+        echo "❌ Aucun Makefile trouvé. Compilation impossible."
+        exit 1
     fi
-}
+fi
 
 function launch_server {
-    echo "Lancement du serveur..."
+    echo "🚀 Lancement du serveur..."
     $SERVER > "$SERVER_LOG" &
     SERVER_PID=$!
     sleep 0.5
@@ -51,7 +32,7 @@ function launch_server {
         kill $SERVER_PID 2>/dev/null
         exit 1
     fi
-    echo "PID capturé : $REAL_PID"
+    echo "📡 PID capturé : $REAL_PID"
 }
 
 function test_message {
@@ -79,10 +60,9 @@ function test_acknowledgement {
     ((TEST_TOTAL++))
     > "$SERVER_LOG"
 
-    echo "Test ACK (accusé de réception)..."
+    echo "🧪 Test ACK (accusé de réception)..."
 
     ($CLIENT "$REAL_PID" "ok" > /dev/null) &
-
     CLIENT_PID=$!
 
     sleep 0.5
@@ -99,9 +79,12 @@ function test_acknowledgement {
 function cleanup {
     kill $SERVER_PID 2>/dev/null
     rm -f "$SERVER_LOG"
+    if [ -f Makefile ]; then
+        make fclean > /dev/null
+        echo "🧼 Projet nettoyé (make fclean)."
+    fi
 }
 
-compile_project
 launch_server
 
 test_message "salut" "Message texte simple"
