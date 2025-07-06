@@ -77,15 +77,17 @@ save_settings() {
     echo "SHOW_DIFF_ON_FAIL=$SHOW_DIFF_ON_FAIL" >> "$SETTINGS_FILE"
     echo "DEBUG_MODE=$DEBUG_MODE" >> "$SETTINGS_FILE"
     echo "ACK_MODE=$ACK_MODE" >> "$SETTINGS_FILE"
+    echo "LENIENT_MODE=$LENIENT_MODE" >> "$SETTINGS_FILE"
 }
 
 load_settings() {
     # Valeurs par défaut
-    CLEAN_ON_EXIT=false
+    CLEAN_ON_EXIT=true
     AUTO_COMPILE=true
-    SHOW_DIFF_ON_FAIL=false
+    SHOW_DIFF_ON_FAIL=true
     DEBUG_MODE=false
     ACK_MODE=false # Par défaut, on teste sans le bonus ACK
+    LENIENT_MODE=false # Par défaut, la comparaison est stricte
 
     if [ -f "$SETTINGS_FILE" ]; then
         source "$SETTINGS_FILE"
@@ -222,6 +224,7 @@ show_settings_menu() {
         echo " 3. Afficher le 'diff' en cas d'échec        : $(print_setting_status $SHOW_DIFF_ON_FAIL)"
         echo " 4. Mode Débogage (voir sortie brute)        : $(print_setting_status $DEBUG_MODE)"
         echo " 5. Mode Accusé de Réception (ACK) [BONUS]   : $(print_setting_status $ACK_MODE)"
+        echo " 6. Mode de comparaison indulgent             : $(print_setting_status $LENIENT_MODE)"
         echo ""
         echo " r - Retour au menu principal"
         echo -n "> "
@@ -241,6 +244,9 @@ show_settings_menu() {
                 ;;
             5)
                 if [ "$ACK_MODE" = true ]; then ACK_MODE=false; else ACK_MODE=true; fi
+                ;;
+            6)
+                if [ "$LENIENT_MODE" = true ]; then LENIENT_MODE=false; else LENIENT_MODE=true; fi
                 ;;
             r|R) break ;;
             *) echo "Choix invalide." && sleep 1 ;;
@@ -307,7 +313,6 @@ run_test() {
     local title="$1"
     local message_sent="$2"
     local expected_output
-    # Le test s'attend maintenant à ce que le serveur affiche le message suivi d'un retour à la ligne.
     expected_output=$(printf "%s\n" "$message_sent")
 
     echo -e "\n--- $title ---"
@@ -345,7 +350,22 @@ run_test() {
     echo -e "📤 ${C_YELLOW}Envoyé  :${C_RESET} '$message_sent'"
     echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$(echo -n "$message_received" | sed 's/$/↵/' | tr -d '\n')'"
 
-    if [[ "$message_received" == "$expected_output" ]]; then
+    local final_check_result=1 # 0 pour succès, 1 pour échec
+    if [ "$LENIENT_MODE" = true ]; then
+        echo -e "$INFO Mode de comparaison indulgent activé. Les différences d'espacement sont ignorées."
+        local sanitized_received=$(echo -n "$message_received" | tr -s '[:space:]' ' ' | xargs)
+        local sanitized_expected=$(echo -n "$expected_output" | tr -s '[:space:]' ' ' | xargs)
+        if [[ "$sanitized_received" == "$sanitized_expected" ]]; then
+            final_check_result=0
+        fi
+    else
+        # Comparaison stricte par défaut
+        if [[ "$message_received" == "$expected_output" ]]; then
+            final_check_result=0
+        fi
+    fi
+
+    if [ $final_check_result -eq 0 ]; then
         echo -e "$SUCCESS Le message a été correctement reçu."
         ((tests_passed++))
     else
@@ -405,14 +425,29 @@ run_multi_client_test() {
     echo -e "📤 ${C_YELLOW}Attendu :${C_RESET} '$(echo -n "$expected_output" | sed 's/$/↵/' | tr -d '\n')'"
     echo -e "📥 ${C_YELLOW}Reçu    :${C_RESET} '$(echo -n "$received_output" | sed 's/$/↵/' | tr -d '\n')'"
 
-    if [[ "$received_output" == "$expected_output" ]]; then
+    local final_check_result=1 # 0 pour succès, 1 pour échec
+    if [ "$LENIENT_MODE" = true ]; then
+        echo -e "$INFO Mode de comparaison indulgent activé. Les différences d'espacement sont ignorées."
+        local sanitized_received=$(echo -n "$received_output" | tr -s '[:space:]' ' ' | xargs)
+        local sanitized_expected=$(echo -n "$expected_output" | tr -s '[:space:]' ' ' | xargs)
+        if [[ "$sanitized_received" == "$sanitized_expected" ]]; then
+            final_check_result=0
+        fi
+    else
+        # Comparaison stricte par défaut
+        if [[ "$received_output" == "$expected_output" ]]; then
+            final_check_result=0
+        fi
+    fi
+
+    if [ $final_check_result -eq 0 ]; then
         echo -e "$SUCCESS Tous les messages des clients ont été reçus dans le bon ordre."
         ((tests_passed++))
     else
         echo -e "$FAIL Un ou plusieurs messages sont manquants ou corrompus."
         if [ "$SHOW_DIFF_ON_FAIL" = true ]; then
             echo -e "${C_BOLD}--- DIFFÉRENCE ---${C_RESET}"
-            diff --color=always <(echo -n "$expected_output") <(echo -n "$received_output")
+            diff --color=always <(echo -n "$expected_output") <(echo -n "$message_received")
             echo "--------------------"
         fi
         ((tests_failed++))
