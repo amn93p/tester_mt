@@ -36,34 +36,6 @@ Nom du script : `test_mt.sh`
 
 ---
 
-## Exemple de sortie réussie
-
-```
-🛠️ Compilation...
-🚀 Lancement du serveur...
-📡 PID capturé : 26475
-✅ Message texte simple
-✅ Caractère Unicode 🐍
-✅ Emoji 😎
-✅ Gestion du caractère nul (ne doit afficher que abc)
-✅ Le client attend l'accusé de réception
-
-🎉 Tous les tests sont passés ! (5/5)
-```
-
----
-
-## Si un test échoue...
-
-Par exemple :
-```
-❌ Le client n'attend pas le ACK correctement
-```
-
-Cela signifie que tu n’as pas encore implémenté le **bonus d’accusé de réception** (`pause()` côté client + `kill(pid, SIGUSR1)` côté serveur).
-
----
-
 ## Arborescence minimale
 
 ```
