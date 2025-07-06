@@ -169,6 +169,7 @@ cleanup() {
 
 # === Fonction de désinstallation ===
 uninstall() {
+    clear
     echo -e "$WARN Cette action va nettoyer le projet (make fclean) et ${C_BOLD}supprimer ce script (${0})${C_RESET}."
     read -p "Êtes-vous sûr de vouloir continuer? (y/n) " -n 1 -r
     echo
@@ -404,6 +405,7 @@ run_multi_client_test() {
 
 # ==================== Exécution Principale ====================
 
+clear # Nettoie le terminal au lancement
 load_settings # Charge les paramètres au début
 
 if [ "$1" == "uninstall" ]; then
@@ -441,6 +443,7 @@ for test in "${tests[@]}"; do
     esac
 done
 
+clear # Nettoie avant d'afficher le résumé
 # === Résumé Final ===
 echo -e "\n${C_BOLD}RÉSULTAT FINAL${C_RESET}"
 echo -e "✅ Réussis : ${C_GREEN}$tests_passed${C_RESET}"
