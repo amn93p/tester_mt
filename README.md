@@ -31,7 +31,7 @@ Nom du script : `test_mt.sh`
 > ```
 > 3. Lance le script de test :
 > ```bash
-> test_mt
+> tester_mt
 > ```
 
 ---
