@@ -1,23 +1,42 @@
 #!/bin/bash
-set +H  # Désactive l'expansion de l'historique pour éviter les bugs avec !
+set +H  # désactive l'expansion historique de Bash (!)
 
 # ╔════════════════════════════════════════════════════════════════════╗
 # ║                      Testeur Minitalk Interactif                  ║
 # ║              Parfait pour le sujet 42 + bonus Unicode & ACK       ║
 # ╚════════════════════════════════════════════════════════════════════╝
 
-# --- ASCII Art ---
-echo -e "
-\033[1;34m
-  _______ __  __ _______ 
- |__   __|  \/  |__   __|
-    | |  | \  / |  | |   
-    | |  | |\/| |  | |   
-    | |  | |  | |  | |   
-    |_|  |_|  |_|  |_|   
-\033[0m"
+# === Couleur principale aléatoire pour le dégradé ===
+base_r=$((RANDOM % 156 + 100))
+base_g=$((RANDOM % 156 + 100))
+base_b=$((RANDOM % 156 + 100))
 
-# --- Configuration ---
+function gradient_line() {
+    local text="$1"
+    local length=${#text}
+    local out=""
+    for ((i = 0; i < length; i++)); do
+        r=$(( (base_r + i * 3) % 256 ))
+        g=$(( (base_g + i * 5) % 256 ))
+        b=$(( (base_b + i * 7) % 256 ))
+        char="${text:$i:1}"
+        out+="\033[38;2;${r};${g};${b}m$char"
+    done
+    echo -e "$out\033[0m"
+}
+
+function fancy_title() {
+    echo
+    gradient_line "  _______ __  __ _______ "
+    gradient_line " |__   __|  \\/  |__   __|"
+    gradient_line "    | |  | \\  / |  | |   "
+    gradient_line "    | |  | |\\/| |  | |   "
+    gradient_line "    | |  | |  | |  | |   "
+    gradient_line "    |_|  |_|  |_|  |_|   "
+    echo
+}
+
+# === Configuration ===
 SERVER="./server"
 CLIENT="./client"
 SERVER_LOG="server_output.txt"
@@ -49,13 +68,11 @@ start_server() {
     SERVER_PID=$!
     sleep 0.5
     local detected_pid=$(grep -o '[0-9]\+' "$SERVER_LOG" | head -n1)
-
     if [[ -z "$detected_pid" ]]; then
         echo -e "$FAIL PID non détecté. Log :"
         cat "$SERVER_LOG"
         exit 1
     fi
-
     SERVER_PID=$detected_pid
     echo -e "$SUCCESS Serveur prêt. PID : ${C_BOLD}$SERVER_PID${C_RESET}"
 }
@@ -63,7 +80,6 @@ start_server() {
 run_test() {
     local title="$1"
     local message="$2"
-
     echo -e "\n--- $title ---"
     > "$SERVER_LOG"
 
@@ -136,6 +152,8 @@ show_menu() {
 }
 
 # === MAIN ===
+fancy_title
+
 if [ ! -x "$SERVER" ] || [ ! -x "$CLIENT" ]; then
     echo -e "$FAIL Serveur ou client introuvable/non exécutable."
     exit 1
