@@ -5,8 +5,10 @@ INSTALL_DIR="$HOME/.local/bin"
 INSTALL_PATH="$INSTALL_DIR/$SCRIPT_NAME"
 RAW_URL="https://raw.githubusercontent.com/amn93p/tester_mt/main/tester_mt"
 
+# Créer ~/.local/bin s’il n’existe pas
 mkdir -p "$INSTALL_DIR"
 
+# Télécharger le script
 echo "⬇️  Téléchargement de $SCRIPT_NAME..."
 curl -fsSL "$RAW_URL" -o "$INSTALL_PATH" || {
     echo "❌ Échec du téléchargement depuis $RAW_URL"
@@ -16,6 +18,7 @@ curl -fsSL "$RAW_URL" -o "$INSTALL_PATH" || {
 chmod +x "$INSTALL_PATH"
 echo "✅ $SCRIPT_NAME installé dans : $INSTALL_PATH"
 
+# Ajoute ~/.local/bin au PATH si nécessaire
 if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
     SHELL_RC=""
     if [ -n "$ZSH_VERSION" ]; then
