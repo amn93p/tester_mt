@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Vérifie que l'utilisateur est bien dans le dossier du projet
+if [ ! -f "client.c" ] || [ ! -f "server.c" ]; then
+    echo "❌ Ce script doit être lancé dans le dossier du projet minitalk."
+    exit 1
+fi
+
 SERVER="./server"
 CLIENT="./client"
 SERVER_LOG="server_output.txt"
