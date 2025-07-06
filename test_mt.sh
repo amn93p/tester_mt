@@ -31,7 +31,7 @@ CLEAN_ON_EXIT=true
 AUTO_COMPILE=true
 SHOW_DIFF_ON_FAIL=true
 
-# === Banque de messages de test (NOUVEAU) ===
+# === Banque de messages de test ===
 SIMPLE_MSGS=(
     "Hello World!"
     "Minitalk est génial"
@@ -186,24 +186,32 @@ print_setting_status() {
     fi
 }
 
-# === Menu des paramètres (AMÉLIORÉ) ===
+# === Menu des paramètres (CORRIGÉ) ===
 show_settings_menu() {
     while true; do
         clear
         fancy_title
         echo -e "${C_BOLD}--- Paramètres ---${C_RESET}"
         echo -e "${C_YELLOW}(les paramètres sont réinitialisés à chaque lancement)${C_RESET}"
-        echo " 1. Nettoyer le projet en quittant (`fclean`) : $(print_setting_status $CLEAN_ON_EXIT)"
+        # Correction des backticks `` en guillemets simples ''
+        echo " 1. Nettoyer le projet en quittant ('fclean') : $(print_setting_status $CLEAN_ON_EXIT)"
         echo " 2. Compiler automatiquement au lancement      : $(print_setting_status $AUTO_COMPILE)"
         echo " 3. Afficher le 'diff' en cas d'échec        : $(print_setting_status $SHOW_DIFF_ON_FAIL)"
         echo ""
         echo " r - Retour au menu principal"
         echo -n "> "
         read -r choice
+        # Correction de la logique pour changer les paramètres
         case "$choice" in
-            1) CLEAN_ON_EXIT=$(! $CLEAN_ON_EXIT) ;;
-            2) AUTO_COMPILE=$(! $AUTO_COMPILE) ;;
-            3) SHOW_DIFF_ON_FAIL=$(! $SHOW_DIFF_ON_FAIL) ;;
+            1)
+                if [ "$CLEAN_ON_EXIT" = true ]; then CLEAN_ON_EXIT=false; else CLEAN_ON_EXIT=true; fi
+                ;;
+            2)
+                if [ "$AUTO_COMPILE" = true ]; then AUTO_COMPILE=false; else AUTO_COMPILE=true; fi
+                ;;
+            3)
+                if [ "$SHOW_DIFF_ON_FAIL" = true ]; then SHOW_DIFF_ON_FAIL=false; else SHOW_DIFF_ON_FAIL=true; fi
+                ;;
             r|R) break ;;
             *) echo "Choix invalide." && sleep 1 ;;
         esac
@@ -308,14 +316,13 @@ run_test() {
     fi
 }
 
-# === Test Multi-Clients (AMÉLIORÉ avec messages aléatoires) ===
+# === Test Multi-Clients ===
 run_multi_client_test() {
     echo -e "\n--- Test: Clients multiples (en série, aléatoire) ---"
     >"$SERVER_LOG"
 
     local msg1=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
     local msg2=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
-    # S'assurer que les messages sont différents pour un test plus pertinent
     while [[ "$msg1" == "$msg2" ]]; do
         msg2=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
     done
