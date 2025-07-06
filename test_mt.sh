@@ -1,12 +1,12 @@
 #!/bin/bash
-set +H  # désactive l'expansion historique (!)
+set +H  # Désactive l'expansion de l'historique (!)
 
 # ╔════════════════════════════════════════════════════════════════════╗
 # ║                      Testeur Minitalk Interactif                  ║
 # ║              Parfait pour le sujet 42 + bonus Unicode & ACK       ║
 # ╚════════════════════════════════════════════════════════════════════╝
 
-# === Dégradé simple par ligne (uniforme et aligné) ===
+# === Dégradé propre : couleur entière par ligne ===
 gradient_line() {
     local text="$1"
     local r=$((RANDOM % 156 + 100))
@@ -15,14 +15,15 @@ gradient_line() {
     echo -e "\033[38;2;${r};${g};${b}m${text}\033[0m"
 }
 
+# === ASCII art stylisé ===
 fancy_title() {
     echo
-    gradient_line " _______ __  __ _______ "
-    gradient_line "|__   __|  \\/  |__   __|"
-    gradient_line "   | |  | \\  / |  | |   "
-    gradient_line "   | |  | |\\/| |  | |   "
-    gradient_line "   | |  | |  | |  | |   "
-    gradient_line "   |_|  |_|  |_|  |_|   "
+    gradient_line "  _______ __  __ _______ "
+    gradient_line " |__   __|  \\/  |__   __|"
+    gradient_line "    | |  | \\  / |  | |   "
+    gradient_line "    | |  | |\\/| |  | |   "
+    gradient_line "    | |  | |  | |  | |   "
+    gradient_line "    |_|  |_|  |_|  |_|   "
     echo
 }
 
