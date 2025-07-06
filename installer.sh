@@ -1,25 +1,26 @@
 #!/bin/bash
 
 SCRIPT_NAME="test_mt.sh"
-DEST_DIR="$HOME/.local/bin"
-DEST_PATH="$DEST_DIR/$SCRIPT_NAME"
+BIN_DIR="$HOME/.local/bin"
+DEST="$BIN_DIR/$SCRIPT_NAME"
+RAW_URL="https://raw.githubusercontent.com/amn93p/tester_mt/main/test_mt.sh"
 
-if [ ! -f "$SCRIPT_NAME" ]; then
-    echo "❌ $SCRIPT_NAME introuvable dans le répertoire courant."
+mkdir -p "$BIN_DIR"
+
+echo "⬇️  Téléchargement de $SCRIPT_NAME..."
+curl -fsSL "$RAW_URL" -o "$DEST" || {
+    echo "❌ Échec du téléchargement depuis $RAW_URL"
     exit 1
-fi
+}
 
-mkdir -p "$DEST_DIR"
+chmod +x "$DEST"
 
-cp "$SCRIPT_NAME" "$DEST_PATH"
-chmod +x "$DEST_PATH"
+echo "✅ $SCRIPT_NAME installé dans $DEST"
 
-echo "✅ Testeur installé dans : $DEST_PATH"
-
-if ! echo "$PATH" | grep -q "$DEST_DIR"; then
-    echo "⚠️  $DEST_DIR n'est pas dans votre PATH."
-    echo "Ajoutez ceci à votre ~/.bashrc ou ~/.zshrc :"
-    echo "    export PATH=\"\$PATH:$DEST_DIR\""
+if ! echo "$PATH" | grep -q "$BIN_DIR"; then
+    echo "⚠️  $BIN_DIR n'est pas dans votre PATH."
+    echo "Ajoutez cette ligne à votre ~/.bashrc ou ~/.zshrc :"
+    echo "    export PATH=\"\$PATH:$BIN_DIR\""
 else
     echo "🚀 Vous pouvez maintenant exécuter le testeur depuis n’importe où avec :"
     echo "    test_mt.sh"
