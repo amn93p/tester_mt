@@ -26,10 +26,41 @@ FAIL="${C_RED}${C_BOLD}[ÉCHEC]${C_RESET}"
 INFO="${C_BLUE}${C_BOLD}[INFO]${C_RESET}"
 WARN="${C_YELLOW}${C_BOLD}[ATTENTION]${C_RESET}"
 
-# === Paramètres configurables (NOUVEAU) ===
+# === Paramètres configurables ===
 CLEAN_ON_EXIT=true
 AUTO_COMPILE=true
 SHOW_DIFF_ON_FAIL=true
+
+# === Banque de messages de test (NOUVEAU) ===
+SIMPLE_MSGS=(
+    "Hello World!"
+    "Minitalk est génial"
+    "42 est la réponse à tout"
+    "Ceci est un message de test."
+    "abcdefghijklmnopqrstuvwxyz"
+    "0123456789"
+    "Les signaux, c'est la vie."
+)
+UNICODE_MSGS=(
+    "你好世界 🌍"
+    "Привет, мир 👋"
+    "こんにちは世界 🐱"
+    "안녕하세요 세계 🇰🇷"
+    "नमस्ते दुनिया 🙏"
+    "αβγδεζηθικλμνξοπρστυφχψω"
+    "Merci Minitalk ! 👍"
+    "¿Qué tal, École 42?"
+)
+MULTI_CLIENT_MSGS=(
+    "Message du client A"
+    "Le client B dit bonjour"
+    "Le client C est là"
+    "Première partie"
+    "Deuxième partie"
+    "Partie finale"
+    "Un autre message"
+    "Et encore un !"
+)
 
 # --- Compteurs ---
 tests_passed=0
@@ -93,20 +124,28 @@ compile_project() {
     fi
 }
 
-# === Nettoyage (respecte maintenant les paramètres) ===
+# === Nettoyage (AMÉLIORÉ) ===
 cleanup() {
-    echo -e "\n$INFO Nettoyage..."
+    local server_was_running=false
     if [[ -n "$SERVER_PID" ]] && ps -p "$SERVER_PID" > /dev/null; then
-       kill "$SERVER_PID" 2>/dev/null
+        server_was_running=true
     fi
-    rm -f "$SERVER_LOG"
+
+    # Affiche le message "Nettoyage" seulement si une action est nécessaire
+    if [ "$server_was_running" = true ] || [ "$CLEAN_ON_EXIT" = true ]; then
+        echo -e "\n$INFO Nettoyage..."
+    fi
+
+    if [ "$server_was_running" = true ]; then
+        kill "$SERVER_PID" 2>/dev/null
+    fi
 
     if [ "$CLEAN_ON_EXIT" = true ]; then
         if [ -f "Makefile" ] || [ -f "makefile" ]; then
-            echo -e "$INFO Exécution de 'make fclean' pour nettoyer le projet..."
             make fclean > /dev/null 2>&1
         fi
     fi
+    rm -f "$SERVER_LOG"
 }
 
 # === Fonction de désinstallation ===
@@ -138,7 +177,7 @@ uninstall() {
     fi
 }
 
-# === Affichage d'un paramètre (NOUVEAU) ===
+# === Affichage d'un paramètre ===
 print_setting_status() {
     if [ "$1" = true ]; then
         echo -e "${C_GREEN}Activé${C_RESET}"
@@ -147,12 +186,13 @@ print_setting_status() {
     fi
 }
 
-# === Menu des paramètres (NOUVEAU) ===
+# === Menu des paramètres (AMÉLIORÉ) ===
 show_settings_menu() {
     while true; do
         clear
         fancy_title
         echo -e "${C_BOLD}--- Paramètres ---${C_RESET}"
+        echo -e "${C_YELLOW}(les paramètres sont réinitialisés à chaque lancement)${C_RESET}"
         echo " 1. Nettoyer le projet en quittant (`fclean`) : $(print_setting_status $CLEAN_ON_EXIT)"
         echo " 2. Compiler automatiquement au lancement      : $(print_setting_status $AUTO_COMPILE)"
         echo " 3. Afficher le 'diff' en cas d'échec        : $(print_setting_status $SHOW_DIFF_ON_FAIL)"
@@ -170,17 +210,17 @@ show_settings_menu() {
     done
 }
 
-# === Menu principal (mis à jour) ===
+# === Menu principal ===
 show_menu() {
     while true; do
         clear
         fancy_title
         echo -e "${C_BOLD}Sélectionne les tests à lancer :${C_RESET}"
-        echo " 1 - Message simple"
+        echo " 1 - Message simple (aléatoire)"
         echo " 2 - Chaîne vide"
-        echo " 3 - Emoji / Unicode"
+        echo " 3 - Emoji / Unicode (aléatoire)"
         echo " 4 - Long message (1000)"
-        echo " 5 - Clients multiples"
+        echo " 5 - Clients multiples (aléatoire)"
         echo " 0 - Tous les tests"
         echo " s - Paramètres"
         echo " q - Quitter"
@@ -223,7 +263,7 @@ start_server() {
     echo -e "$SUCCESS Serveur prêt. PID : ${C_BOLD}$SERVER_PID${C_RESET}"
 }
 
-# === Moteur de test (respecte maintenant les paramètres) ===
+# === Moteur de test ===
 run_test() {
     local title="$1"
     local message_sent="$2"
@@ -268,14 +308,22 @@ run_test() {
     fi
 }
 
-# === Test Multi-Clients (respecte maintenant les paramètres) ===
+# === Test Multi-Clients (AMÉLIORÉ avec messages aléatoires) ===
 run_multi_client_test() {
-    echo -e "\n--- Test: Clients multiples (en série) ---"
+    echo -e "\n--- Test: Clients multiples (en série, aléatoire) ---"
     >"$SERVER_LOG"
 
-    local msg1="Premier message."
-    local msg2="Deuxième test."
-    local msg3="Troisième envoi."
+    local msg1=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
+    local msg2=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
+    # S'assurer que les messages sont différents pour un test plus pertinent
+    while [[ "$msg1" == "$msg2" ]]; do
+        msg2=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
+    done
+    local msg3=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
+    while [[ "$msg3" == "$msg1" || "$msg3" == "$msg2" ]]; do
+        msg3=${MULTI_CLIENT_MSGS[$RANDOM % ${#MULTI_CLIENT_MSGS[@]}]}
+    done
+    
     local expected_output
     expected_output=$(printf "%s\n%s\n%s" "$msg1" "$msg2" "$msg3")
 
@@ -316,7 +364,6 @@ trap cleanup EXIT
 if [ "$AUTO_COMPILE" = true ]; then
     compile_project
 else
-    # On affiche le titre seulement si on ne compile pas, sinon il s'affiche déjà
     fancy_title
     echo -e "$INFO Compilation automatique désactivée. Assurez-vous que le projet est compilé."
 fi
@@ -326,9 +373,15 @@ start_server
 
 for test in "${tests[@]}"; do
     case $test in
-        1) run_test "Message simple" "Hello 42!" ;;
+        1) 
+            msg=${SIMPLE_MSGS[$RANDOM % ${#SIMPLE_MSGS[@]}]}
+            run_test "Message simple (aléatoire)" "$msg"
+            ;;
         2) run_test "Chaîne vide" "" ;;
-        3) run_test "Emoji / UTF-8" "🐍😎🔥 çøøl 漢字" ;;
+        3) 
+            msg=${UNICODE_MSGS[$RANDOM % ${#UNICODE_MSGS[@]}]}
+            run_test "Emoji / UTF-8 (aléatoire)" "$msg"
+            ;;
         4) 
             msg=$(head -c 1000 /dev/urandom | base64 | tr -d '\n' | head -c 1000)
             run_test "Message long et complexe (1000)" "$msg"
