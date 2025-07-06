@@ -188,7 +188,7 @@ show_menu() {
         3) tests=(3) ;;
         4) tests=(4) ;;
         5) tests=(5) ;;
-        0) tests=(1 2 3 4 5 6) ;;
+        0) tests=(1 2 3 4 5) ;;
         q|Q) echo "Annulé."; exit 0 ;;
         *) echo "Choix invalide."; show_menu ;;
     esac
