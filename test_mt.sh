@@ -53,7 +53,7 @@ fancy_title() {
     echo
 }
 
-# === Compilation du projet (NOUVEAU) ===
+# === Compilation du projet ===
 compile_project() {
     echo -e "$INFO Vérification des fichiers sources et du Makefile..."
     if [ ! -f "server.c" ] || [ ! -f "client.c" ]; then
@@ -76,14 +76,22 @@ compile_project() {
 }
 
 
-# === Nettoyage ===
+# === Nettoyage (AMÉLIORÉ avec make fclean) ===
 cleanup() {
     echo -e "\n$INFO Nettoyage..."
-    # On ne tente de tuer le processus QUE si la variable SERVER_PID n'est pas vide
+    # Arrêt du processus serveur
     if [[ -n "$SERVER_PID" ]] && ps -p "$SERVER_PID" > /dev/null; then
        kill "$SERVER_PID" 2>/dev/null
     fi
+    # Suppression du log
     rm -f "$SERVER_LOG"
+
+    # Nettoyage des fichiers compilés
+    if [ -f "Makefile" ] || [ -f "makefile" ]; then
+        echo -e "$INFO Exécution de 'make fclean' pour nettoyer le projet..."
+        # Redirection de la sortie pour ne pas polluer l'affichage
+        make fclean > /dev/null 2>&1
+    fi
 }
 trap cleanup EXIT
 
@@ -167,12 +175,16 @@ run_multi_client_test() {
     local expected_output
     expected_output=$(printf "%s\n%s\n%s" "$msg1" "$msg2" "$msg3")
 
-    echo -e "$INFO Envoi de 3 messages à la suite..."
+    echo -e "$INFO Envoi de 3 messages à la suite, avec une pause entre chaque..."
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg1" || { echo -e "$FAIL Le client 1 a échoué."; ((tests_failed++)); return; }
+    sleep 0.2 # Laisse le temps au serveur de traiter et potentiellement répondre (ACK)
+
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg2" || { echo -e "$FAIL Le client 2 a échoué."; ((tests_failed++)); return; }
+    sleep 0.2 # Laisse le temps au serveur de traiter et potentiellement répondre (ACK)
+
     timeout "$CLIENT_TIMEOUT" ./"$CLIENT" "$SERVER_PID" "$msg3" || { echo -e "$FAIL Le client 3 a échoué."; ((tests_failed++)); return; }
     
-    sleep 0.5
+    sleep 0.5 # Attendre que le serveur finisse d'écrire le dernier message
 
     local received_output=$(tr -d '\0' < "$SERVER_LOG")
     
@@ -225,7 +237,7 @@ for test in "${tests[@]}"; do
     case $test in
         1) run_test "Message simple" "Hello 42!" ;;
         2) run_test "Chaîne vide" "" ;;
-        3) run_test "Emoji / UTF-8" "🐍😎🔥 çøøl 漢字" ;;
+        3) run_test "Emoji / UTF-8" "🐍�🔥 çøøl 漢字" ;;
         4) 
             msg=$(head -c 1000 /dev/urandom | base64 | tr -d '\n' | head -c 1000)
             run_test "Message long et complexe (1000)" "$msg"
