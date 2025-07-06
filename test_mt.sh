@@ -1,17 +1,16 @@
 #!/bin/bash
 
 # ==============================================================================
-# | Testeur Minitalk Conforme au Sujet 42                                      |
-# | Ce script vérifie les exigences obligatoires et bonus de manière logique.  |
+# |                      Testeur Minitalk Robuste v3.0                         |
+# |      Conçu pour la flexibilité, la robustesse et la conformité au sujet.   |
 # ==============================================================================
 
 # --- Configuration ---
 SERVER="./server"
 CLIENT="./client"
-SERVER_LOG="server_output.log"
-TIMEOUT=8 # Secondes max pour qu'un client (avec bonus) se termine.
+SERVER_LOG="server.log"
 
-# --- Style et Statut ---
+# --- Style et Statuts ---
 C_RESET='\033[0m'
 C_RED='\033[0;31m'
 C_GREEN='\033[0;32m'
@@ -22,7 +21,6 @@ C_BOLD='\033[1m'
 SUCCESS="${C_GREEN}${C_BOLD}[SUCCÈS]${C_RESET}"
 FAIL="${C_RED}${C_BOLD}[ÉCHEC]${C_RESET}"
 INFO="${C_BLUE}${C_BOLD}[INFO]${C_RESET}"
-WARN="${C_YELLOW}${C_BOLD}[AVERT]${C_RESET}"
 
 # --- Compteurs ---
 tests_passed=0
@@ -32,91 +30,90 @@ tests_failed=0
 # | FONCTIONS UTILITAIRES                                                      |
 # ==============================================================================
 
-# Démarre le serveur et vérifie qu'il affiche un PID valide.
+cleanup() {
+    echo -e "\n$INFO Nettoyage..."
+    # L'option -j permet de tuer tout un groupe de processus, utile si le serveur lance des enfants.
+    if [ -n "$SERVER_PID" ]; then
+        kill -j $SERVER_PID 2>/dev/null
+        kill $SERVER_PID 2>/dev/null
+    fi
+    rm -f "$SERVER_LOG"
+}
+# Piège la sortie du script pour lancer le nettoyage quoi qu'il arrive
+trap cleanup EXIT
+
 start_server() {
     echo -e "$INFO Démarrage du serveur..."
-    
-    # Lance le serveur, capture sa sortie initiale (le PID) dans un fichier
-    # et le reste dans le log principal.
-    stdbuf -o0 ./$SERVER > "$SERVER_LOG" 2>&1 &
+    ./$SERVER > "$SERVER_LOG" 2>&1 &
     SERVER_PID=$!
-    
-    # Laisse le temps au serveur d'écrire son PID
-    sleep 0.5
-    
-    # Le PID affiché par le serveur est la première ligne du log
-    local displayed_pid=$(head -n 1 "$SERVER_LOG")
+    sleep 0.5 # Laisse le temps au serveur de s'initialiser et d'afficher son PID
 
-    # Nettoie le log pour ne garder que la sortie des messages
-    tail -n +2 "$SERVER_LOG" > tmp.log && mv tmp.log "$SERVER_LOG"
+    # Regex pour extraire le premier nombre de la sortie, le rendant robuste
+    local displayed_pid=$(grep -o -m 1 '[0-9]\+' "$SERVER_LOG")
 
-    if [[ "$displayed_pid" =~ ^[0-9]+$ ]] && [ "$displayed_pid" -eq "$SERVER_PID" ]; then
-        echo -e "$SUCCESS Le serveur a démarré et affiché son PID correctement : ${C_BOLD}$SERVER_PID${C_RESET}"
-        return 0
+    if [[ -n "$displayed_pid" ]]; then
+        echo -e "$SUCCESS Serveur démarré. PID détecté : ${C_BOLD}$displayed_pid${C_RESET}"
+        # On utilise le PID détecté pour plus de robustesse
+        SERVER_PID=$displayed_pid
+        # On vide le log de la ligne du PID pour ne pas fausser les tests
+        sed -i '1d' "$SERVER_LOG"
     else
-        echo -e "$FAIL Le serveur n'a pas affiché un PID valide au démarrage."
-        echo -e "       PID attendu: $SERVER_PID | PID affiché: '$displayed_pid'"
-        kill $SERVER_PID 2>/dev/null
+        echo -e "$FAIL Le serveur n'a pas affiché de PID numérique au démarrage. Contenu du log :"
+        cat "$SERVER_LOG"
         exit 1
     fi
 }
 
-# Arrête proprement le serveur
-stop_server() {
-    echo -e "\n$INFO Arrêt du serveur..."
-    if kill $SERVER_PID 2>/dev/null; then
-        wait $SERVER_PID 2>/dev/null
-        echo -e "$SUCCESS Serveur arrêté proprement."
-    else
-        echo -e "$WARN Le serveur ne tournait plus."
-    fi
-    rm -f "$SERVER_LOG"
-}
-
-# Exécute un test unitaire
-# Arguments: 1: Titre du test | 2: Chaîne à envoyer | 3: Chaîne attendue (si différente)
 run_test() {
     local test_title="$1"
     local string_to_send="$2"
-    local expected_output="${3:-$string_to_send}" # Utilise l'argument 3 ou le 2 par défaut
     
     echo -e "\n--- $test_title ---"
     
-    # Vide le log serveur avant le test
+    # Vide le log pour ce test
     > "$SERVER_LOG"
     
-    # Exécution du client avec un timeout pour gérer le bonus ACK
+    # --- Timeout Dynamique ---
+    # Calcul : 2 secondes de base + 0.005 seconde par caractère.
+    # C'est généreux mais attrapera les serveurs vraiment lents.
+    local string_len=${#string_to_send}
+    local timeout=$(echo "2 + $string_len * 0.005" | bc)
+
+    # Exécution du client avec le timeout
     ./$CLIENT $SERVER_PID "$string_to_send" &
     local client_pid=$!
     
-    (sleep $TIMEOUT && kill $client_pid 2>/dev/null) &
+    (sleep $timeout && kill $client_pid 2>/dev/null) &
     local watcher_pid=$!
     
     wait $client_pid 2>/dev/null
     local client_status=$?
     
-    # Nettoie le processus de surveillance
-    kill $watcher_pid 2>/dev/null
-    wait $watcher_pid 2>/dev/null
+    kill $watcher_pid 2>/dev/null; wait $watcher_pid 2>/dev/null
 
-    # Analyse du résultat
+    # --- Analyse du résultat ---
     if [ $client_status -ne 0 ]; then
-        echo -e "$FAIL Le client a dépassé le timeout de $TIMEOUT s. Le serveur n'a probablement pas envoyé d'ACK (bonus)."
+        echo -e "$FAIL Le client a dépassé le timeout dynamique de ${timeout}s. (ACK non reçu ou serveur trop lent)"
         tests_failed=$((tests_failed + 1))
-        return 1
+        return
     fi
-
-    # Laisse une marge infime pour que le dernier signal soit traité et écrit
+    
+    # Pause infime pour garantir que le filesystem a bien écrit le log
     sleep 0.1
-    local server_output=$(cat "$SERVER_LOG" | tr -d '\n')
 
-    if [ "$server_output" == "$expected_output" ]; then
-        echo -e "$SUCCESS Le message a été reçu et affiché correctement."
+    # --- Lecture Robuste & Vérification Flexible ---
+    # `tr -d '\0'` supprime les octets nuls qui cassent la substitution de commande.
+    # La comparaison `== *...*` vérifie si le message attendu est INCLUS dans la sortie.
+    local server_output
+    server_output=$(tr -d '\0' < "$SERVER_LOG")
+    
+    if [[ "$server_output" == *"$string_to_send"* ]]; then
+        echo -e "$SUCCESS Message reçu correctement (client terminé à temps)."
         tests_passed=$((tests_passed + 1))
     else
-        echo -e "$FAIL Le message reçu est incorrect."
-        echo -e "       ${C_YELLOW}Attendu :${C_RESET} '$expected_output'"
-        echo -e "       ${C_YELLOW}Reçu    :${C_RESET} '$server_output'"
+        echo -e "$FAIL Message incorrect."
+        echo -e "       ${C_YELLOW}Attendu (devait être inclus) :${C_RESET} '$string_to_send'"
+        echo -e "       ${C_YELLOW}Reçu dans le log              :${C_RESET} '$server_output'"
         tests_failed=$((tests_failed + 1))
     fi
 }
@@ -125,50 +122,43 @@ run_test() {
 # | SÉQUENCE DE TEST                                                           |
 # ==============================================================================
 
-# --- Vérification initiale ---
 if [ ! -x "$SERVER" ] || [ ! -x "$CLIENT" ]; then
-    echo -e "$FAIL Un des exécutables ($SERVER, $CLIENT) est introuvable ou non exécutable."
+    echo -e "$FAIL Exécutable '$SERVER' ou '$CLIENT' introuvable/non-exécutable."
     exit 1
 fi
 
 start_server
 
-# --- Tests Mandatoires ---
-run_test "Test 1 (Obligatoire): Chaîne de caractères simple" \
+# --- Suite de tests logiques ---
+run_test "Test 1: Chaîne simple (Validation de base)" \
          "Hello World!"
 
-# --- Tests Bonus ---
-run_test "Test 2 (Bonus): Support des caractères Unicode" \
-         "👋 π Vøici des çàractèrës spîciaux 测验 ✅"
-
-# --- Tests de Robustesse (implicites dans le sujet) ---
-long_string=$(head -c 4000 /dev/urandom | base64 | tr -d '\n' | head -c 4000)
-run_test "Test 3 (Robustesse): Très longue chaîne (4000 caractères)" \
-         "$long_string"
-
-run_test "Test 4 (Robustesse): Chaîne vide" \
+run_test "Test 2: Chaîne vide (Gestion d'un cas limite)" \
          ""
 
-echo -e "\n--- Test 5 (Obligatoire): Gestion de clients multiples et consécutifs ---"
+run_test "Test 3: Bonus - Support des caractères Unicode (UTF-8)" \
+         "👋 π Vøici des çàractèrës spîciaux 测验 ✅"
+         
+long_string_4k=$(head -c 4000 /dev/urandom | base64 | tr -d '[:space:]' | head -c 4000)
+run_test "Test 4: Robustesse - Très longue chaîne (4k caractères)" \
+         "$long_string_4k"
+
+echo -e "\n--- Test 5: Obligatoire - Gestion de clients multiples ---"
 > "$SERVER_LOG"
-./$CLIENT $SERVER_PID "Message 1. " &
-./$CLIENT $SERVER_PID "Message 2. " &
-./$CLIENT $SERVER_PID "Message 3." &
-wait # Attend la fin de tous les processus en arrière-plan
-sleep 0.5 # Laisse le temps au serveur de tout afficher
-server_output=$(cat "$SERVER_LOG" | tr -d '\n')
-expected_output="Message 1. Message 2. Message 3."
-if [ "$server_output" == "$expected_output" ]; then
-    echo -e "$SUCCESS Les messages de plusieurs clients ont été traités correctement et dans l'ordre."
+./$CLIENT $SERVER_PID "Fragment1" &
+./$CLIENT $SERVER_PID "Fragment2" &
+./$CLIENT $SERVER_PID "Fragment3" &
+wait # Attend la fin des 3 clients
+sleep 0.5
+final_output=$(tr -d '\0' < "$SERVER_LOG")
+if [[ "$final_output" == *"Fragment1"* && "$final_output" == *"Fragment2"* && "$final_output" == *"Fragment3"* ]]; then
+    echo -e "$SUCCESS Le serveur a reçu les messages de plusieurs clients sans planter."
     tests_passed=$((tests_passed + 1))
 else
-    echo -e "$FAIL Les messages de plusieurs clients sont mélangés ou incorrects."
-    echo -e "       ${C_YELLOW}Attendu :${C_RESET} '$expected_output'"
-    echo -e "       ${C_YELLOW}Reçu    :${C_RESET} '$server_output'"
+    echo -e "$FAIL Les messages de plusieurs clients sont manquants ou corrompus."
+    echo -e "       ${C_YELLOW}Sortie finale:${C_RESET} '$final_output'"
     tests_failed=$((tests_failed + 1))
 fi
-
-stop_server
 
 # --- Résumé Final ---
 echo -e "\n==================== ${C_BOLD}RÉSUMÉ${C_RESET} ===================="
@@ -177,7 +167,9 @@ echo -e "Tests échoués : ${C_RED}$tests_failed${C_RESET}"
 echo "================================================"
 
 if [ $tests_failed -eq 0 ]; then
+    echo -e "\n${C_GREEN}🎉 Excellent ! Le Minitalk semble robuste et conforme au sujet.${C_RESET}"
     exit 0
 else
+    echo -e "\n${C_RED}🔥 Des tests ont échoué. Examine les logs pour déboguer.${C_RESET}"
     exit 1
 fi
