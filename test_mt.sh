@@ -1,6 +1,20 @@
+if [ ! -f "client.c" ] || [ ! -f "server.c" ]; then
+    echo "🔎 Fichiers source non trouvés. Tentative de compilation avec Makefile..."
+    if [ -f Makefile ]; then
+        make > /dev/null
+        if [ ! -f "./client" ] || [ ! -f "./server" ]; then
+            echo "❌ Compilation échouée. Aucun binaire trouvé."
+            exit 1
+        fi
+    else
+        echo "❌ Ni fichiers sources ni Makefile trouvés dans ce dossier."
+        echo "💡 Place-toi dans un projet minitalk valide."
+        exit 1
+    fi
+fi
+
 #!/bin/bash
 
-# Vérifie que l'utilisateur est bien dans le dossier du projet
 if [ ! -f "client.c" ] || [ ! -f "server.c" ]; then
     echo "❌ Ce script doit être lancé dans le dossier du projet minitalk."
     exit 1
