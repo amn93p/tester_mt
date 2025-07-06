@@ -3,7 +3,7 @@
 SCRIPT_NAME="tester_mt"
 INSTALL_DIR="$HOME/.local/bin"
 INSTALL_PATH="$INSTALL_DIR/$SCRIPT_NAME"
-RAW_URL="https://raw.githubusercontent.com/amn93p/tester_mt/main/tester_mt"
+RAW_URL="https://raw.githubusercontent.com/amn93p/tester_mt/main/tester_mt.sh"
 
 echo "📦 Installation du testeur $SCRIPT_NAME..."
 
