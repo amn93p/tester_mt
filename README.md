@@ -6,7 +6,7 @@ Ce script bash permet de **tester automatiquement** le bon fonctionnement de ton
 
 ## 🔧 Fichier
 
-Nom du script : `test_minitalk_bonus.sh`
+Nom du script : `test_mt.sh`
 
 ---
 
@@ -84,7 +84,7 @@ Cela signifie que tu n’as pas encore implémenté le **bonus d’accusé de r�
 ├── client.c
 ├── libft_utils.c
 ├── Makefile (optionnel)
-├── test_minitalk_bonus.sh
+├── test_mt.sh
 └── README_TEST.md
 ```
 
