@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Nouveau script pour installer le testeur Python TMT
-
 INSTALL_DIR="$HOME/.local/bin"
 TARGET="$INSTALL_DIR/tmt"
 PY_URL="https://raw.githubusercontent.com/amn93p/tester_mt/main/tmt.py"
@@ -9,7 +7,6 @@ PY_URL="https://raw.githubusercontent.com/amn93p/tester_mt/main/tmt.py"
 echo "📦 Installation de TMT (version Python)..."
 mkdir -p "$INSTALL_DIR"
 
-# Télécharger et renommer tmt.py => tmt
 echo "⬇️  Téléchargement..."
 if curl -fsSL "$PY_URL" -o "$TARGET"; then
     chmod +x "$TARGET"
@@ -19,7 +16,6 @@ else
     exit 1
 fi
 
-# Vérifie si ~/.local/bin est dans le PATH
 if ! echo "$PATH" | grep -q "$INSTALL_DIR"; then
     SHELL_RC=""
     [ -n "$ZSH_VERSION" ] && SHELL_RC="$HOME/.zshrc"
