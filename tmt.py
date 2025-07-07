@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+#!/usr/bin/env python3
 
 import subprocess
 import time
@@ -147,7 +148,7 @@ def test_perf():
     proc.send_signal(signal.SIGINT)
     proc.wait()
     detail = f"{duration:.2f}s pour 100c"
-    log_result("Performance (<1s pour 100c)", ok and duration < 1.0, duration, msg, output.strip(), detail, category="obligatoire")
+    log_result("Performance", ok and duration < 1.0, duration, msg, output.strip(), detail, category="obligatoire")
     return ok
 
 def test_unicode():
@@ -169,7 +170,7 @@ def test_ack():
     proc.send_signal(signal.SIGINT)
     proc.wait()
     detail = "" if ack else "Aucun signal SIGUSR1/SIGUSR2 reçu"
-    log_result("Accusé de réception (SIGUSR)", ack, duration, msg, msg, detail, category="bonus")
+    log_result("Accusé de réception", ack, duration, msg, msg, detail, category="bonus")
     return ack
 
 def test_summary():
@@ -187,7 +188,7 @@ def test_summary():
             passed_bn += ok
         symbol = f"{GREEN}✓{RESET}" if ok else f"{RED}✗{RESET}"
         print(f" {symbol} {name}")
-    print(f"{CYAN}╰────────────────────────────╯{RESET}")
+    print(f"{CYAN}╰───────────────────────────╯{RESET}")
 
     ob_status = f"{GREEN}VALIDÉ{RESET}" if passed_ob == obligatory else f"{RED}INCOMPLET{RESET}"
     if bonus == 0:
